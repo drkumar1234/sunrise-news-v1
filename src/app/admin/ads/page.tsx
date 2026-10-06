@@ -1,0 +1,122 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Megaphone, Plus, Save, Check, ExternalLink } from 'lucide-react';
+import { AdPlacement } from '@/types';
+import { getAdPlacements } from '@/lib/db';
+
+export default function AdminAdsPage() {
+  const [ads, setAds] = useState<AdPlacement[]>([]);
+  const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    setAds(getAdPlacements());
+  }, []);
+
+  const toggleAdActive = (id: string) => {
+    const updated = ads.map(a => a.id === id ? { ...a, isActive: !a.isActive } : a);
+    setAds(updated);
+    setToast('Ad placement status updated!');
+    setTimeout(() => setToast(''), 2500);
+  };
+
+  const updateAdField = (id: string, field: keyof AdPlacement, value: any) => {
+    const updated = ads.map(a => a.id === id ? { ...a, [field]: value } : a);
+    setAds(updated);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="border-b pb-4">
+        <h1 className="text-2xl font-black text-slate-900">Advertising & Campaign Manager</h1>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Control leaderboard, sidebar, and mid-content advertising placements and tracking URLs.
+        </p>
+      </div>
+
+      {toast && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+          <Check className="w-4 h-4 text-emerald-600" />
+          <span>{toast}</span>
+        </div>
+      )}
+
+      <div className="space-y-6">
+        {ads.map((ad) => (
+          <div key={ad.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 rounded bg-brand-navy text-white text-xs font-bold uppercase tracking-wider">
+                  Slot: {ad.slotKey}
+                </span>
+                <span className="font-bold text-sm text-slate-900">{ad.title}</span>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold">
+                <span>Active:</span>
+                <input
+                  type="checkbox"
+                  checked={ad.isActive}
+                  onChange={() => toggleAdActive(ad.id)}
+                  className="rounded text-brand-orange h-4 w-4"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="md:col-span-1">
+                <label className="block font-bold text-slate-600 mb-1">Creative Preview:</label>
+                <div className="aspect-[16/9] rounded-lg overflow-hidden border bg-slate-100">
+                  <img src={ad.imageUrl} alt={ad.title} className="w-full h-full object-cover" />
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Campaign Headline:</label>
+                  <input
+                    type="text"
+                    value={ad.title}
+                    onChange={(e) => updateAdField(ad.id, 'title', e.target.value)}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Advertiser Name:</label>
+                    <input
+                      type="text"
+                      value={ad.advertiser}
+                      onChange={(e) => updateAdField(ad.id, 'advertiser', e.target.value)}
+                      className="w-full p-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Target Click URL:</label>
+                    <input
+                      type="text"
+                      value={ad.targetUrl}
+                      onChange={(e) => updateAdField(ad.id, 'targetUrl', e.target.value)}
+                      className="w-full p-2 border rounded-lg font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Creative Image URL:</label>
+                  <input
+                    type="text"
+                    value={ad.imageUrl}
+                    onChange={(e) => updateAdField(ad.id, 'imageUrl', e.target.value)}
+                    className="w-full p-2 border rounded-lg font-mono text-[11px]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
