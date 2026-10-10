@@ -25,7 +25,20 @@ export async function getCMSStore(name: string) {
     throw new Error('A Netlify store was requested while SUNRISE_STORAGE is local.');
   }
   const { getStore } = await import('@netlify/blobs');
-  return getStore({ name, consistency: 'strong' });
+  return getStore({
+    name,
+    consistency: 'strong',
+    fetch: (input, init) => globalThis.fetch(input, {
+      ...init,
+      cache: 'no-store',
+      // Next deduplicates GETs by teeing their response streams. The Blobs SDK
+      // awaits body.cancel() for a missing key; that never settles while Next
+      // retains the other tee branch. An explicit signal opts out of deduping.
+      // Do not add a fresh timeout to each SDK retry: its own retry lifecycle
+      // must remain intact, and a caller's cancellation signal is preserved.
+      signal: init?.signal ?? new AbortController().signal,
+    }),
+  });
 }
 
 export interface ConditionalJSONStore {
@@ -35,6 +48,7 @@ export interface ConditionalJSONStore {
   } | null>;
   setJSON(key: string, value: unknown, options: { onlyIfNew: true } | { onlyIfMatch: string }): Promise<{
     modified: boolean;
+    etag?: string;
   }>;
 }
 
@@ -58,7 +72,12 @@ export async function mutateJSONWithCAS<T, R>(
     const saved = await store.setJSON(key, data, current
       ? { onlyIfMatch: current.etag! }
       : { onlyIfNew: true });
-    if (saved.modified) return result;
+    if (saved.modified) {
+      // Blobs 11 can report modified:true for a rejected conditional write.
+      // A successful persistent write must also supply its new version.
+      if (!saved.etag?.trim()) throw new Error('Persistent storage did not confirm the write with an ETag.');
+      return result;
+    }
     // Jitter avoids the same concurrent requests repeatedly colliding.
     await pause(Math.min(10 * (2 ** attempt), 200) + Math.floor(Math.random() * 20));
   }

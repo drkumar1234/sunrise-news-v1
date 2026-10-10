@@ -36,7 +36,7 @@ export async function saveMedia(name: string, data: Buffer) {
   const metadata: MediaMetadata = { name: path.basename(name).slice(0,180), contentType, size: data.length };
   if (process.env.SUNRISE_STORAGE === 'netlify') {
     const result = await (await getCMSStore('sunrise-media')).set(key, new Uint8Array(data).buffer, { metadata: { ...metadata }, onlyIfNew: true });
-    if (!result.modified) throw new Error('Upload could not be saved. Please retry.');
+    if (!result.modified || !result.etag?.trim()) throw new Error('Upload could not be saved. Please retry.');
   } else {
     await fs.mkdir(localDirectory(), { recursive: true });
     await fs.writeFile(path.join(localDirectory(), key), data, { flag: 'wx' });

@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
     // 2. Process PDF Document (.pdf)
     else if (extension === '.pdf') {
       try {
-        const { PDFParse } = require('pdf-parse');
+        // Keep PDF.js and its native canvas module out of ordinary request startup.
+        const { PDFParse } = await import('pdf-parse');
         const parser = new PDFParse({ data: buffer });
         try { const pdfData = await parser.getText(); extractedText = pdfData.text || ''; }
         finally { await parser.destroy(); }

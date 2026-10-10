@@ -139,7 +139,7 @@ test('cloud compare-and-swap retries preserve concurrent updates and initialize 
       }
       document = structuredClone(value);
       version++;
-      return { modified: true };
+      return { modified: true, etag: String(version) };
     },
   };
   await allSuccessful(Array.from({ length: 24 }, (_, i) => storage.mutateJSONWithCAS(store, 'db', () => ({ ids: [] }), data => data.ids.push(i))));
@@ -158,6 +158,100 @@ test('cloud write failures and missing ETags are propagated', async () => {
     async getWithMetadata() { return null; },
     async setJSON() { throw new Error('Cloud unavailable'); },
   }, 'key', () => ({}), () => true), /Cloud unavailable/);
+  await assert.rejects(storage.mutateJSONWithCAS({
+    async getWithMetadata() { return null; },
+    async setJSON() { return { modified: true, etag: '' }; },
+  }, 'key', () => ({}), () => true), /confirm the write with an ETag/);
+});
+
+test('real Blobs SDK missing-key reads settle through the actual Next fetch wrapper', async () => {
+  const { createDedupeFetch } = require('next/dist/server/lib/dedupe-fetch');
+  const { setEnvironmentContext } = require('@netlify/blobs');
+  const originalFetch = globalThis.fetch;
+  const originalContext = process.env.NETLIFY_BLOBS_CONTEXT;
+  const originalGlobalContext = globalThis.netlifyBlobsContext;
+  const originalBackend = process.env.SUNRISE_STORAGE;
+  const seen = [];
+  let value = null;
+  let timeout;
+  try {
+    process.env.SUNRISE_STORAGE = 'netlify';
+    delete globalThis.netlifyBlobsContext;
+    setEnvironmentContext({
+      siteID: 'test-site', token: 'test-token',
+      edgeURL: 'https://example.invalid', uncachedEdgeURL: 'https://example.invalid',
+    });
+    globalThis.fetch = createDedupeFetch(async (_input, init) => {
+      seen.push(init);
+      if (init.method.toUpperCase() === 'GET') {
+        return value === null
+          ? new Response('Missing key', { status: 404 })
+          : new Response(JSON.stringify(value), { status: 200, headers: { etag: 'version-1' } });
+      }
+      if (value !== null && new Headers(init.headers).get('if-none-match') === '*') {
+        return new Response('Version conflict', { status: 412 });
+      }
+      value = JSON.parse(init.body);
+      return new Response(null, { status: 200, headers: { etag: 'version-1' } });
+    });
+    await Promise.race([
+      (async () => {
+        const store = await storage.getCMSStore('startup-test');
+        assert.equal(await store.getWithMetadata('missing', { type: 'json' }), null);
+        assert.equal((await store.setJSON('missing', { ready: true }, { onlyIfNew: true })).modified, true);
+        assert.deepEqual((await store.getWithMetadata('missing', { type: 'json' })).data, { ready: true });
+        assert.equal((await store.setJSON('missing', {}, { onlyIfNew: true })).modified, false);
+      })(),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Blobs deadlocked while cancelling a Next-deduplicated missing-key response')), 2000); }),
+    ]);
+    assert.equal(seen.length, 4);
+    assert.ok(seen.every(init => init.cache === 'no-store' && init.signal instanceof AbortSignal));
+  } finally {
+    clearTimeout(timeout);
+    globalThis.fetch = originalFetch;
+    if (originalContext === undefined) delete process.env.NETLIFY_BLOBS_CONTEXT;
+    else process.env.NETLIFY_BLOBS_CONTEXT = originalContext;
+    if (originalGlobalContext === undefined) delete globalThis.netlifyBlobsContext;
+    else globalThis.netlifyBlobsContext = originalGlobalContext;
+    process.env.SUNRISE_STORAGE = originalBackend;
+  }
+});
+
+test('real Blobs SDK rejected conditional writes cannot report JSON or media saves', async () => {
+  const { setEnvironmentContext } = require('@netlify/blobs');
+  const { saveMedia } = require('../src/lib/media-store.ts');
+  const originalFetch = globalThis.fetch;
+  const originalContext = process.env.NETLIFY_BLOBS_CONTEXT;
+  const originalGlobalContext = globalThis.netlifyBlobsContext;
+  const originalBackend = process.env.SUNRISE_STORAGE;
+  let rejectedWrites = 0;
+  try {
+    process.env.SUNRISE_STORAGE = 'netlify';
+    delete globalThis.netlifyBlobsContext;
+    setEnvironmentContext({
+      siteID: 'test-site', token: 'test-token',
+      edgeURL: 'https://example.invalid', uncachedEdgeURL: 'https://example.invalid',
+    });
+    globalThis.fetch = async (_input, init) => {
+      if (init.method.toUpperCase() === 'GET') return new Response('Missing key', { status: 404 });
+      assert.equal(new Headers(init.headers).get('if-none-match'), '*');
+      rejectedWrites++;
+      return new Response('Access denied', { status: 403 });
+    };
+    await assert.rejects(
+      storage.mutateJSON('rejected-test', 'key', () => ({}), data => { data.ready = true; return true; }),
+      /confirm the write with an ETag/,
+    );
+    await assert.rejects(saveMedia('test.txt', Buffer.from('CMS test')), /Upload could not be saved/);
+    assert.equal(rejectedWrites, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalContext === undefined) delete process.env.NETLIFY_BLOBS_CONTEXT;
+    else process.env.NETLIFY_BLOBS_CONTEXT = originalContext;
+    if (originalGlobalContext === undefined) delete globalThis.netlifyBlobsContext;
+    else globalThis.netlifyBlobsContext = originalGlobalContext;
+    process.env.SUNRISE_STORAGE = originalBackend;
+  }
 });
 
 test('a corrupt local database fails visibly and is never overwritten with sample data', async () => {
