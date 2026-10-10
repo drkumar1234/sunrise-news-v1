@@ -2,12 +2,13 @@ import React from 'react';
 import { Eye, CheckCircle2 } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function AccessibilityStatementPage({
+export default async function AccessibilityStatementPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   return (

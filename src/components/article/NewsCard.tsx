@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { Clock, Play, Camera, ShieldCheck, MapPin, Eye } from 'lucide-react';
 import { Article, Category, Author, Language } from '@/types';
@@ -39,7 +40,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   // Time format
   const formattedTime = new Date(article.publishedAt).toLocaleDateString(
     isTelugu ? 'te-IN' : 'en-IN',
-    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }
   );
 
   // 1. HERO LEAD STORY
@@ -48,7 +49,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
       <article className="group relative rounded-xl overflow-hidden bg-slate-900 text-white shadow-xl transition-all duration-300 hover:shadow-2xl">
         <div className="relative aspect-[16/9] md:aspect-[21/9] w-full overflow-hidden">
           <img
-            src={article.featuredImage}
+            src={safeUrl(article.featuredImage, '/brand/sunrise-news-logo.jpg')}
             alt={headline}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
             loading="eager"
@@ -107,7 +108,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
       <article className="group flex flex-col sm:flex-row gap-4 p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all">
         <Link href={articleUrl} className="sm:w-1/3 flex-shrink-0 relative overflow-hidden rounded-md aspect-[16/10]">
           <img
-            src={article.featuredImage}
+            src={safeUrl(article.featuredImage, '/brand/sunrise-news-logo.jpg')}
             alt={headline}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
@@ -184,7 +185,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
       <article className="group relative rounded-lg overflow-hidden bg-slate-900 text-white shadow hover:shadow-lg transition-all">
         <div className="relative aspect-[16/9] w-full overflow-hidden">
           <img
-            src={article.featuredImage}
+            src={safeUrl(article.featuredImage, '/brand/sunrise-news-logo.jpg')}
             alt={headline}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
@@ -227,7 +228,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
     <article className="group flex flex-col bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300">
       <Link href={articleUrl} className="relative aspect-[16/10] overflow-hidden bg-slate-100">
         <img
-          src={article.featuredImage}
+          src={safeUrl(article.featuredImage, '/brand/sunrise-news-logo.jpg')}
           alt={headline}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"

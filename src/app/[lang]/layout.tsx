@@ -1,20 +1,25 @@
 import React from 'react';
-import { getCategories, getSettings } from '@/lib/db';
+import { getCategories, getSettings } from '@/lib/public-articles';
 import { Header } from '@/components/layout/Header';
 import { BreakingNewsTicker } from '@/components/layout/BreakingNewsTicker';
 import { Footer } from '@/components/layout/Footer';
 import { Language } from '@/types';
 
-export default function LocalizedLayout({
+export const dynamic = 'force-dynamic';
+
+export default async function LocalizedLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
-  const categories = getCategories();
-  const settings = getSettings();
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
+  const [categories, settings] = await Promise.all([
+    getCategories(),
+    getSettings(),
+  ]);
 
   return (
     <div className={`flex flex-col min-h-screen ${lang === 'te' ? 'lang-te' : ''}`}>

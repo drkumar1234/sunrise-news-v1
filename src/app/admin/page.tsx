@@ -6,12 +6,17 @@ import {
   History as HistoryIcon 
 } from 'lucide-react';
 import { getArticles, getCategories, getSubscribers, getAuditLogs } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
 
-export default function AdminDashboardPage() {
-  const { articles: all } = getArticles({ status: 'all' });
-  const categories = getCategories();
-  const subscribers = getSubscribers();
-  const auditLogs = getAuditLogs().slice(0, 8);
+export const dynamic = 'force-dynamic';
+export default async function AdminDashboardPage() {
+  if (!await getSession(new Request('http://cms.local/admin', { headers: { cookie: (await cookies()).toString() } }))) redirect('/admin/login');
+  const [{ articles: all }, categories, subscribers, logs] = await Promise.all([
+    getArticles({ status: 'all' }), getCategories(), getSubscribers(), getAuditLogs(),
+  ]);
+  const auditLogs = logs.slice(0, 8);
 
   const publishedCount = all.filter(a => a.status === 'published').length;
   const inReviewCount = all.filter(a => a.status === 'review').length;

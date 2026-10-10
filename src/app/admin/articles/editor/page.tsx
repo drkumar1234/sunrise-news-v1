@@ -9,8 +9,9 @@ import {
   FileText, Upload, Download, Trash2, Camera, Paperclip,
   CheckCircle2, AlertCircle, FileCheck
 } from 'lucide-react';
-import { Category, Tag, Author, ArticleStatus, Language, ArticleRevision } from '@/types';
-import { getCategories, getTags, getAuthors } from '@/lib/db';
+import { Category, Tag, Author, Article, ArticleStatus, Language, ArticleRevision } from '@/types';
+import { adminRequest } from '@/lib/admin-client';
+import { formatInline } from '@/lib/content-safety';
 
 import { Suspense } from 'react';
 
@@ -27,6 +28,10 @@ function ArticleEditorContent() {
   const [previewMode, setPreviewMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [catalogReady, setCatalogReady] = useState(false);
+  const [articleReady, setArticleReady] = useState(!editId);
+  const [loadError, setLoadError] = useState('');
 
   // Document Upload & Attachment State
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -67,6 +72,13 @@ function ArticleEditorContent() {
   const [internalNotes, setInternalNotes] = useState('');
   const [seoTitle, setSeoTitle] = useState('');
   const [seoDescription, setSeoDescription] = useState('');
+  const [storyFormat, setStoryFormat] = useState<NonNullable<Article['format']>>('article');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [isEditorPick, setIsEditorPick] = useState(false);
+  const [isTrending, setIsTrending] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<NonNullable<Article['galleryImages']>>([]);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [canonicalUrl, setCanonicalUrl] = useState('');
 
   // Fact check toggle
   const [isFactCheck, setIsFactCheck] = useState(false);
@@ -75,6 +87,9 @@ function ArticleEditorContent() {
   const [claimedBy, setClaimedBy] = useState('');
   const [verdict, setVerdict] = useState<'True' | 'Mostly True' | 'False' | 'Misleading' | 'Unproven'>('False');
   const [evidenceSummary, setEvidenceSummary] = useState('');
+  const [evidenceSummaryTe, setEvidenceSummaryTe] = useState('');
+  const [factOriginUrl, setFactOriginUrl] = useState('');
+  const [factReviewDate, setFactReviewDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Auto-slug generator supporting English and Telugu Unicode
   const generateSlug = (text: string) => {
@@ -125,13 +140,21 @@ function ArticleEditorContent() {
 
   // Load existing article if editing
   useEffect(() => {
-    setCategories(getCategories());
-    setTagsList(getTags());
-    setAuthors(getAuthors());
+    setArticleReady(!editId);
+    setLoadError('');
+    adminRequest('/api/catalog').then(data => {
+      setCategories(data.categories);
+      setTagsList(data.tags);
+      setAuthors(data.authors);
+      setCatalogReady(true);
+      if (!editId) {
+        setCategoryId(data.categories[0]?.id || '');
+        setAuthorId(data.authors[0]?.id || '');
+      }
+    }).catch(error => setLoadError(error.message));
 
     if (editId) {
-      fetch(`/api/articles/${editId}`)
-        .then((res) => res.json())
+      adminRequest(`/api/articles/${editId}`)
         .then((data) => {
           if (data.article) {
             const a = data.article;
@@ -159,6 +182,12 @@ function ArticleEditorContent() {
             setInternalNotes(a.internalNotes || '');
             setSeoTitle(a.seoTitle || '');
             setSeoDescription(a.seoDescription || '');
+            setStoryFormat(a.format || 'article');
+            setMediaUrl(a.mediaUrl || '');
+            setIsEditorPick(!!a.isEditorPick);
+            setIsTrending(!!a.isTrending);
+            setGalleryImages(a.galleryImages || []);
+            setCanonicalUrl(a.canonicalUrl || '');
 
             if (a.attachedDocument) {
               setAttachedDocument(a.attachedDocument);
@@ -171,22 +200,27 @@ function ArticleEditorContent() {
               setClaimedBy(a.factCheck.claimedBy || '');
               setVerdict(a.factCheck.verdict || 'False');
               setEvidenceSummary(a.factCheck.evidenceSummary || '');
+              setEvidenceSummaryTe(a.factCheck.evidenceSummaryTe || '');
+              setFactOriginUrl(a.factCheck.originUrl || '');
+              setFactReviewDate(a.factCheck.reviewDate || new Date().toISOString().slice(0, 10));
             }
 
             // Load revisions
             if (data.revisions) {
               setRevisions(data.revisions);
             }
+            setArticleReady(true);
           }
         })
-        .catch(console.error);
+        .catch(error => setLoadError(error.message));
     }
   }, [editId]);
 
-  // Document upload handler (.docx, .doc, .pdf, .txt, .md)
+  // Document upload handler (.docx, .pdf, .txt, .md)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { alert('Choose a file smaller than 4 MB.'); return; }
 
     setUploadingDoc(true);
     setDocUploadSuccess(null);
@@ -232,7 +266,7 @@ function ArticleEditorContent() {
         setAttachedDocument(data.file);
       }
 
-      setDocUploadSuccess(`Successfully extracted text from "${file.name}"! Form fields and document attachment are ready.`);
+      setDocUploadSuccess(data.warning || `Text extracted from "${file.name}". Review the story before publishing.`);
     } catch (err: any) {
       alert(`Document upload error: ${err.message}`);
     } finally {
@@ -244,6 +278,7 @@ function ArticleEditorContent() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { alert('Choose an image smaller than 4 MB.'); return; }
 
     setUploadingPhoto(true);
     try {
@@ -255,6 +290,7 @@ function ArticleEditorContent() {
         body: formData,
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to upload photo.');
       if (data.imageUrl) {
         setFeaturedImage(data.imageUrl);
         setToastMessage('Photo uploaded and set as featured image!');
@@ -268,6 +304,23 @@ function ArticleEditorContent() {
   };
 
   // Visual formatting toolbar insertion
+  const handleGalleryUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { setErrorMessage('Choose an image smaller than 4 MB.'); return; }
+    if (galleryImages.length >= 30) { setErrorMessage('A gallery can contain up to 30 images.'); return; }
+    setUploadingGallery(true);
+    setErrorMessage('');
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const result = await adminRequest('/api/admin/upload-doc', { method: 'POST', body: data });
+      if (!result.imageUrl) throw new Error('The file did not contain a supported image.');
+      setGalleryImages(images => [...images, { url: result.imageUrl, caption: '', credit: 'Sunrise News' }]);
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Unable to upload gallery image.'); }
+    finally { setUploadingGallery(false); event.target.value = ''; }
+  };
+
   const insertFormat = (tag: 'h2' | 'h3' | 'bold' | 'italic' | 'quote' | 'bullet' | 'telugu-date', isTe: boolean = false) => {
     const targetSetter = isTe ? setBodyTe : setBody;
     const currentVal = isTe ? bodyTe : body;
@@ -310,7 +363,13 @@ function ArticleEditorContent() {
 
   const handleSubmit = async (e?: React.FormEvent, forceStatus?: ArticleStatus) => {
     if (e) e.preventDefault();
+    if (!catalogReady || !articleReady || saving) return;
+    if (!(headline.trim() || headlineTe.trim()) || !(body.trim() || bodyTe.trim())) {
+      setErrorMessage('Add a headline and story text before saving.');
+      return;
+    }
     setSaving(true);
+    setErrorMessage('');
 
     const activeStatus = forceStatus || status;
 
@@ -341,7 +400,7 @@ function ArticleEditorContent() {
       body: finalBody,
       bodyTe: finalBodyTe,
       categoryId: categoryId || categories[0]?.id || 'cat-ap',
-      subcategoryId: subcategoryId || undefined,
+      subcategoryId,
       tags: selectedTags,
       authorId: authorId || authors[0]?.id || 'auth-1',
       location: location || 'Amaravati',
@@ -353,21 +412,27 @@ function ArticleEditorContent() {
       imageCredit,
       isBreaking,
       isLeadStory,
+      isEditorPick,
+      isTrending,
       internalNotes,
       seoTitle: seoTitle || finalHeadline,
       seoDescription: seoDescription || finalSummary,
-      attachedDocument: attachedDocument || undefined,
-      format: isFactCheck ? 'fact-check' : 'article',
+      canonicalUrl,
+      galleryImages,
+      attachedDocument: attachedDocument || null,
+      format: isFactCheck ? 'fact-check' : storyFormat,
+      mediaUrl,
       factCheck: isFactCheck ? {
         claim,
         claimTe,
         claimedBy,
         verdict,
-        verdictTe: verdict === 'False' ? 'అబద్ధం' : 'నిజం',
+        verdictTe: { True: 'నిజం', 'Mostly True': 'ఎక్కువగా నిజం', False: 'అబద్ధం', Misleading: 'తప్పుదోవ పట్టించేది', Unproven: 'రుజువు కాలేదు' }[verdict],
         evidenceSummary,
-        evidenceSummaryTe: evidenceSummary,
-        reviewDate: new Date().toISOString().split('T')[0],
-      } : undefined,
+        evidenceSummaryTe,
+        originUrl: factOriginUrl,
+        reviewDate: factReviewDate,
+      } : null,
     };
 
     try {
@@ -389,7 +454,7 @@ function ArticleEditorContent() {
         setToastMessage(
           activeStatus === 'published' 
             ? '🎉 Article published live on website! Redirecting to live story...' 
-            : 'Article successfully saved as draft!'
+            : `Article saved with status: ${activeStatus}.`
         );
         setTimeout(() => {
           if (activeStatus === 'published') {
@@ -400,26 +465,35 @@ function ArticleEditorContent() {
         }, 1200);
       } else {
         const errData = await res.json().catch(() => ({}));
-        alert(`Failed to save article: ${errData.error || 'Server error'}`);
+        setErrorMessage(`Failed to save article: ${errData.error || 'Server error'}`);
       }
     } catch (err: any) {
       console.error(err);
-      setToastMessage('Error saving article. Please check inputs.');
+      setErrorMessage('Error saving article. Please check inputs.');
     } finally {
       setSaving(false);
     }
   };
 
   // Restore revision handler
-  const handleRestoreRevision = (rev: ArticleRevision) => {
+  const handleRestoreRevision = async (rev: ArticleRevision) => {
     if (!confirm(`Restore content from Version ${rev.version}? Current unsaved text will be replaced.`)) return;
-    setHeadline(rev.headline);
-    setSummary(rev.summary);
-    setBody(rev.body);
+    try {
+    const data = await adminRequest(`/api/articles/${editId}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revisionId: rev.id }) });
+    setHeadline(data.article.headline);
+    setSummary(data.article.summary);
+    setBody(data.article.body);
+    setHeadlineTe(data.article.headlineTe || '');
+    setSummaryTe(data.article.summaryTe || '');
+    setBodyTe(data.article.bodyTe || '');
+    setRevisions(data.revisions || []);
     setRevisionsOpen(false);
     setToastMessage(`Restored to Version ${rev.version}`);
     setTimeout(() => setToastMessage(''), 2500);
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Unable to restore revision.'); }
   };
+
+  if (!catalogReady || !articleReady) return <div className="bg-white p-8 rounded-xl">{loadError ? <p role="alert" className="text-red-700">{loadError} Refresh this page to retry.</p> : <p>Loading article editor…</p>}</div>;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
@@ -469,12 +543,12 @@ function ArticleEditorContent() {
           {/* 1-Click Save Draft */}
           <button
             type="button"
-            onClick={(e) => handleSubmit(e, 'draft')}
+            onClick={(e) => handleSubmit(e)}
             disabled={saving}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-colors shadow flex items-center gap-1.5 disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>Save Draft</span>
+            <span>Save {status === 'published' ? 'Changes' : status.charAt(0).toUpperCase() + status.slice(1)}</span>
           </button>
 
           {/* 1-Click Publish Live */}
@@ -490,6 +564,7 @@ function ArticleEditorContent() {
         </div>
       </div>
 
+      {errorMessage && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{errorMessage}</p>}
       {toastMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2 shadow-sm animate-fadeIn">
           <Check className="w-4 h-4 text-emerald-600" />
@@ -517,7 +592,7 @@ function ArticleEditorContent() {
                     </span>
                   </h3>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Select any .docx, .doc, .pdf or text press release. The system automatically extracts headlines, paragraphs & Telugu text.
+                    Upload .docx, .pdf, .txt, or .md files up to 4 MB. Review extracted text; scanned PDFs may require manual transcription.
                   </p>
                 </div>
               </div>
@@ -528,7 +603,7 @@ function ArticleEditorContent() {
                 <span>{uploadingDoc ? 'Extracting Text...' : 'Choose Word / PDF File'}</span>
                 <input
                   type="file"
-                  accept=".docx,.doc,.pdf,.txt,.rtf,.md"
+                  accept=".docx,.pdf,.txt,.md"
                   disabled={uploadingDoc}
                   onChange={handleFileUpload}
                   className="hidden"
@@ -744,7 +819,7 @@ function ArticleEditorContent() {
 
             {previewMode ? (
               <div className="prose prose-slate max-w-none p-4 bg-slate-50 rounded-lg border border-slate-200 min-h-[300px]">
-                <div dangerouslySetInnerHTML={{ __html: body.replace(/\n/g, '<br/>') }} />
+                <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: formatInline(body) }} />
               </div>
             ) : (
               <div className="space-y-4">
@@ -781,7 +856,7 @@ function ArticleEditorContent() {
                 <input
                   type="checkbox"
                   checked={isFactCheck}
-                  onChange={(e) => setIsFactCheck(e.target.checked)}
+                  onChange={(e) => { setIsFactCheck(e.target.checked); if (!e.target.checked && storyFormat === 'fact-check') setStoryFormat('article'); }}
                   className="h-4 w-4 text-brand-orange rounded"
                 />
                 <span className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
@@ -840,6 +915,10 @@ function ArticleEditorContent() {
                     className="w-full p-2 border rounded-lg"
                   />
                 </div>
+                <label className="block font-bold text-slate-700">Claim (Telugu)<input value={claimTe} onChange={e => setClaimTe(e.target.value)} className="w-full p-2 border rounded-lg mt-1" /></label>
+                <label className="block font-bold text-slate-700">Evidence summary (Telugu)<textarea rows={3} value={evidenceSummaryTe} onChange={e => setEvidenceSummaryTe(e.target.value)} className="w-full p-2 border rounded-lg mt-1" /></label>
+                <label className="block font-bold text-slate-700">Source URL<input value={factOriginUrl} onChange={e => setFactOriginUrl(e.target.value)} className="w-full p-2 border rounded-lg mt-1" /></label>
+                <label className="block font-bold text-slate-700">Review date<input type="date" value={factReviewDate} onChange={e => setFactReviewDate(e.target.value)} className="w-full p-2 border rounded-lg mt-1" /></label>
               </div>
             )}
           </div>
@@ -860,15 +939,17 @@ function ArticleEditorContent() {
                 onChange={(e: any) => setStatus(e.target.value)}
                 className="w-full p-2 border rounded-lg text-xs font-bold bg-white"
               >
-                <option value="draft">Draft (Private to Reporter)</option>
+                <option value="draft">Draft (Private to Newsroom)</option>
                 <option value="review">Submitted for Review</option>
-                <option value="approved">Approved by Senior Editor</option>
+                <option value="approved">Approved for Publication</option>
                 <option value="published">Published (Live on Website)</option>
                 <option value="archived">Archived</option>
               </select>
             </div>
 
             <div className="space-y-2 pt-2 border-t">
+              <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={isEditorPick} onChange={e => setIsEditorPick(e.target.checked)} />Editor&apos;s pick</label>
+              <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={isTrending} onChange={e => setIsTrending(e.target.checked)} />Trending story</label>
               <label className="flex items-center gap-2 cursor-pointer text-xs">
                 <input
                   type="checkbox"
@@ -892,6 +973,15 @@ function ArticleEditorContent() {
           </div>
 
           {/* Taxonomy & Tags */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+            <h3 className="font-bold uppercase">Story format</h3>
+            <label className="block">Primary language<select value={language} onChange={e => setLanguage(e.target.value as Language)} className="block w-full border rounded-lg p-2 mt-1"><option value="en">English</option><option value="te">తెలుగు</option></select></label>
+            <select aria-label="Story format" value={storyFormat} onChange={e => { setStoryFormat(e.target.value as NonNullable<Article['format']>); setIsFactCheck(e.target.value === 'fact-check'); }} className="w-full p-2 border rounded-lg bg-white">
+              {['article', 'video', 'photo', 'infographic', 'fact-check', 'investigation', 'opinion', 'live'].map(format => <option key={format} value={format}>{format}</option>)}
+            </select>
+            <label className="block">Video embed URL<input value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} placeholder="https://www.youtube.com/embed/..." className="w-full p-2 border rounded-lg mt-1" /></label>
+            <p className="text-slate-500">YouTube and Vimeo embed links are supported.</p>
+          </div>
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b pb-2">
               Category & Tags
@@ -901,7 +991,7 @@ function ArticleEditorContent() {
               <label className="block text-xs font-semibold text-slate-600 mb-1">Primary Category:</label>
               <select
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId(''); }}
                 className="w-full p-2 border rounded-lg text-xs bg-white"
               >
                 {categories.map((c) => (
@@ -911,6 +1001,8 @@ function ArticleEditorContent() {
                 ))}
               </select>
             </div>
+
+            <label className="block text-xs">Subcategory<select value={subcategoryId} onChange={e => setSubcategoryId(e.target.value)} className="block w-full p-2 border rounded-lg mt-1"><option value="">None</option>{categories.filter(category => category.parentId === categoryId).map(category => <option key={category.id} value={category.id}>{category.nameEn}</option>)}</select></label>
 
             {/* Canonical Tags Manager */}
             <div>
@@ -1016,14 +1108,14 @@ function ArticleEditorContent() {
                 <span>{uploadingPhoto ? 'Uploading Photo...' : '📷 Upload Photo from Device'}</span>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   disabled={uploadingPhoto}
                   onChange={handlePhotoUpload}
                   className="hidden"
                 />
               </label>
               <span className="text-[10px] text-slate-400 mt-1 block text-center">
-                JPG, PNG, WebP supported
+                JPG, PNG, WebP · Maximum 4 MB
               </span>
             </div>
 
@@ -1056,6 +1148,22 @@ function ArticleEditorContent() {
             </div>
           </div>
 
+          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+            <h3 className="font-bold uppercase">Photo gallery ({galleryImages.length})</h3>
+            {galleryImages.map((image, index) => <div key={`${image.url}-${index}`} className="space-y-2 border-b pb-3">
+              <img src={image.url} alt={image.caption || 'Gallery image'} className="w-full rounded-lg max-h-40 object-cover" />
+              <input aria-label={`Gallery image ${index + 1} caption`} placeholder="Caption" value={image.caption} onChange={e => setGalleryImages(images => images.map((item, i) => i === index ? { ...item, caption: e.target.value } : item))} className="w-full border rounded-lg p-2" />
+              <input aria-label={`Gallery image ${index + 1} credit`} placeholder="Photo credit" value={image.credit} onChange={e => setGalleryImages(images => images.map((item, i) => i === index ? { ...item, credit: e.target.value } : item))} className="w-full border rounded-lg p-2" />
+              <button type="button" className="text-red-700" onClick={() => setGalleryImages(images => images.filter((_, i) => i !== index))}>Remove image from story</button>
+            </div>)}
+            <label className="block cursor-pointer bg-slate-100 p-3 rounded-lg text-center font-semibold">{uploadingGallery ? 'Uploading…' : 'Add gallery image'}<input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" disabled={uploadingGallery || galleryImages.length >= 30} onChange={handleGalleryUpload} /></label>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+            <h3 className="font-bold uppercase">Search preview</h3>
+            <label className="block">SEO title<input value={seoTitle} onChange={e => setSeoTitle(e.target.value)} maxLength={500} className="block w-full p-2 border rounded-lg mt-1" /></label>
+            <label className="block">SEO description<textarea rows={3} value={seoDescription} onChange={e => setSeoDescription(e.target.value)} maxLength={1000} className="block w-full p-2 border rounded-lg mt-1" /></label>
+            <label className="block">Canonical URL (optional)<input value={canonicalUrl} onChange={e => setCanonicalUrl(e.target.value)} maxLength={2048} className="block w-full p-2 border rounded-lg mt-1" /></label>
+          </div>
           {/* Private Internal Notes (Hidden from Public) */}
           <div className="bg-amber-50/70 p-5 rounded-xl border border-amber-200 space-y-2">
             <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider">

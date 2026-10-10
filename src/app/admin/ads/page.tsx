@@ -3,26 +3,40 @@
 import React, { useState, useEffect } from 'react';
 import { Megaphone, Plus, Save, Check, ExternalLink } from 'lucide-react';
 import { AdPlacement } from '@/types';
-import { getAdPlacements } from '@/lib/db';
+import { adminRequest, saveAdmin } from '@/lib/admin-client';
 
 export default function AdminAdsPage() {
   const [ads, setAds] = useState<AdPlacement[]>([]);
   const [toast, setToast] = useState('');
+  const [error, setError] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
-    setAds(getAdPlacements());
+    adminRequest('/api/admin/ads').then(data => setAds(data.ads)).catch(error => setError(error.message));
   }, []);
 
   const toggleAdActive = (id: string) => {
     const updated = ads.map(a => a.id === id ? { ...a, isActive: !a.isActive } : a);
     setAds(updated);
-    setToast('Ad placement status updated!');
-    setTimeout(() => setToast(''), 2500);
+    setToast('Unsaved changes. Save the campaign to apply them.');
   };
 
   const updateAdField = (id: string, field: keyof AdPlacement, value: any) => {
     const updated = ads.map(a => a.id === id ? { ...a, [field]: value } : a);
     setAds(updated);
+  };
+
+  const saveCampaign = async (ad: AdPlacement) => {
+    setSavingId(ad.id);
+    setError('');
+    try { await saveAdmin('/api/admin/ads', ad); setToast('Campaign saved.'); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Unable to save campaign.'); }
+    finally { setSavingId(null); }
+  };
+
+  const addCampaign = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    setAds([...ads, { id: `ad-${Date.now()}`, slotKey: 'leaderboard', title: 'New campaign', advertiser: '', imageUrl: '', targetUrl: '', startDate: today, endDate: today, isActive: false }]);
   };
 
   return (
@@ -34,6 +48,8 @@ export default function AdminAdsPage() {
         </p>
       </div>
 
+      <button type="button" onClick={addCampaign} className="px-4 py-2 rounded-lg bg-brand-navy text-white text-sm font-bold">Add campaign</button>
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
       {toast && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-600" />
@@ -67,7 +83,7 @@ export default function AdminAdsPage() {
               <div className="md:col-span-1">
                 <label className="block font-bold text-slate-600 mb-1">Creative Preview:</label>
                 <div className="aspect-[16/9] rounded-lg overflow-hidden border bg-slate-100">
-                  <img src={ad.imageUrl} alt={ad.title} className="w-full h-full object-cover" />
+                  {ad.imageUrl && <img src={ad.imageUrl} alt={ad.title} className="w-full h-full object-cover" />}
                 </div>
               </div>
 
@@ -114,6 +130,12 @@ export default function AdminAdsPage() {
                 </div>
               </div>
             </div>
+            <div className="grid sm:grid-cols-3 gap-3 text-xs">
+              <label>Placement<select value={ad.slotKey} onChange={e => updateAdField(ad.id, 'slotKey', e.target.value)} className="block border p-2 rounded w-full">{['leaderboard', 'sidebar', 'mid_content', 'footer'].map(slot => <option key={slot} value={slot}>{slot}</option>)}</select></label>
+              <label>Start date<input type="date" value={ad.startDate} onChange={e => updateAdField(ad.id, 'startDate', e.target.value)} className="block border p-2 rounded w-full" /></label>
+              <label>End date<input type="date" value={ad.endDate} onChange={e => updateAdField(ad.id, 'endDate', e.target.value)} className="block border p-2 rounded w-full" /></label>
+            </div>
+            <button type="button" disabled={savingId === ad.id} onClick={() => saveCampaign(ad)} className="px-4 py-2 rounded-lg bg-brand-navy text-white text-xs font-bold disabled:opacity-50">{savingId === ad.id ? 'Saving…' : 'Save campaign'}</button>
           </div>
         ))}
       </div>

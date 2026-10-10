@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { History as HistoryIcon, CheckCircle, Mail } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function CorrectionsPolicyPage({
+export default async function CorrectionsPolicyPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   return (

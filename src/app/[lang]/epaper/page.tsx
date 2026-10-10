@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { 
   Calendar, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
@@ -8,22 +10,14 @@ import {
 } from 'lucide-react';
 import { DashedClipIcon } from '@/components/clipper/DashedClipIcon';
 import { NewsClipperModal } from '@/components/clipper/NewsClipperModal';
-import { Language } from '@/types';
-import { getArticles } from '@/lib/db';
+import { Article, Language } from '@/types';
+import { getSiteUrl } from '@/lib/site-url';
 
-export default function EPaperPage({ params }: { params: { lang: string } }) {
+export default function EPaperPage() {
+  const params = useParams<{ lang: string }>();
   const lang: Language = params.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  // Editions
-  const editions = [
-    { id: 'amaravati', nameEn: 'Amaravati Main Edition', nameTe: 'అమరావతి ప్రధాన సంచిక' },
-    { id: 'hyderabad', nameEn: 'Hyderabad Metro Edition', nameTe: 'హైదరాబాద్ మెట్రో సంచిక' },
-    { id: 'visakhapatnam', nameEn: 'Visakhapatnam City Edition', nameTe: 'విశాఖపట్నం నగర సంచిక' },
-    { id: 'national', nameEn: 'National Broadsheet Edition', nameTe: 'జాతీయ దినపత్రిక సంచిక' },
-  ];
-
-  const [selectedEdition, setSelectedEdition] = useState(editions[0].id);
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomLevel, setZoomLevel] = useState(100);
 
@@ -41,45 +35,49 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
   } | null>(null);
 
   // Fetch articles to populate newspaper columns
-  const { articles } = getArticles({ status: 'published' });
-  const leadStory = articles[0];
-  const secondaryStory1 = articles[1];
-  const secondaryStory2 = articles[2];
-  const regionalStory = articles[3];
-  const factCheckStory = articles[4];
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [siteUrl, setSiteUrl] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    setSiteUrl(getSiteUrl());
+    fetch('/api/articles?limit=100', { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Unable to load articles');
+        return response.json();
+      })
+      .then(data => setArticles(data.articles || []))
+      .catch(err => { if (err.name !== 'AbortError') setLoadError(true); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, []);
+  const pageCount = Math.max(1, Math.ceil(articles.length / 4));
+  const currentArticles = articles.slice((currentPage - 1) * 4, currentPage * 4);
+  const leadStory = currentArticles[0];
+  const secondaryStory1 = currentArticles[1];
+  const secondaryStory2 = currentArticles[2];
+  const factCheckStory = currentArticles[3];
+  const leadBody = isTelugu && leadStory?.bodyTe ? leadStory.bodyTe : leadStory?.body || '';
 
-  // Trigger clip for a specific story or entire page
-  const handleStartClip = (story?: typeof leadStory) => {
-    if (story) {
-      setActiveStoryForClip({
-        headline: isTelugu && story.headlineTe ? story.headlineTe : story.headline,
-        summary: isTelugu && story.summaryTe ? story.summaryTe : story.summary,
-        body: isTelugu && story.bodyTe ? story.bodyTe : story.body,
-        featuredImage: story.featuredImage,
-        imageCaption: story.imageCaption,
-        categoryName: isTelugu ? 'ప్రధాన వార్త' : 'Lead Story',
-        authorName: 'Sunrise News Bureau',
-        location: isTelugu && story.locationTe ? story.locationTe : story.location,
-      });
-    } else {
-      setActiveStoryForClip({
-        headline: isTelugu 
-          ? 'అమరావతి నిర్మాణ పనుల్లో వేగం: కోర్ క్యాపిటల్ మౌలిక వసతుల టెండర్ల ఖరారు'
-          : 'Amaravati Capital Works Gain Momentum as Core Infrastructure Tenders Finalized',
-        summary: isTelugu
-          ? 'ఆంధ్రప్రదేశ్ రాజధాని అమరావతిలో సచివాలయం, అసెంబ్లీ, హైకోర్టు అనుసంధాన ప్రధాన రహదారుల నిర్మాణానికి సీఆర్‌డీఏ తుది రూపునిచ్చింది.'
-          : 'The Andhra Pradesh Capital Region Development Authority has approved engineering layouts for the government complex.',
-        body: 'In a major milestone for Andhra Pradesh riverfront capital, Phase 2 infrastructure works have received technical clearances.',
-        featuredImage: leadStory?.featuredImage,
-        categoryName: 'AMARAVATI SPECIAL',
-        authorName: 'K. Satyanarayana',
-        location: 'Amaravati',
-      });
-    }
+  // Create a clipping only from a published story shown on this page.
+  const handleStartClip = (story: Article | undefined = leadStory) => {
+    if (!story) return;
+    setActiveStoryForClip({
+      headline: isTelugu && story.headlineTe ? story.headlineTe : story.headline,
+      summary: isTelugu && story.summaryTe ? story.summaryTe : story.summary,
+      body: isTelugu && story.bodyTe ? story.bodyTe : story.body,
+      featuredImage: story.featuredImage,
+      imageCaption: story.imageCaption,
+      categoryName: isTelugu ? 'వార్త' : 'News',
+      authorName: 'Sunrise News',
+      location: isTelugu && story.locationTe ? story.locationTe : story.location,
+    });
     setClipperOpen(true);
   };
 
   const todayFormatted = new Date().toLocaleDateString(isTelugu ? 'te-IN' : 'en-IN', {
+    timeZone: 'Asia/Kolkata',
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -88,6 +86,9 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+      {loadError && <p role="alert" className="p-4 bg-red-950 text-white">{isTelugu ? 'వార్తలు లోడ్ కాలేదు. మళ్లీ ప్రయత్నించండి.' : 'Articles could not be loaded. Please refresh to try again.'}</p>}
+      {loading && <p role="status" className="p-4">{isTelugu ? 'వార్తలు లోడ్ అవుతున్నాయి...' : 'Loading published stories...'}</p>}
+      {!loading && !loadError && articles.length === 0 && <p className="p-4">{isTelugu ? 'ప్రచురిత వార్తలు ఇంకా లేవు.' : 'No published stories are available yet.'}</p>}
       {/* 1. TOP EPAPER CONTROL TOOLBAR */}
       <div className="sticky top-0 z-30 bg-slate-950 border-b border-slate-800 px-4 py-2.5 shadow-md">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -109,18 +110,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
 
             <div className="h-6 w-px bg-slate-800 hidden sm:block" />
 
-            {/* Edition Switcher */}
-            <select
-              value={selectedEdition}
-              onChange={(e) => setSelectedEdition(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-orange"
-            >
-              {editions.map((ed) => (
-                <option key={ed.id} value={ed.id}>
-                  {isTelugu ? ed.nameTe : ed.nameEn}
-                </option>
-              ))}
-            </select>
+            <span className="text-xs text-slate-300">{isTelugu ? 'తాజా ప్రచురిత వార్తలు' : 'Latest Published Stories'}</span>
           </div>
 
           {/* Date & Page Navigation */}
@@ -142,12 +132,12 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <span className="px-2 font-bold text-xs text-white">
-                {isTelugu ? `పేజీ ${currentPage} / 4` : `Page ${currentPage} of 4`}
+                {isTelugu ? `పేజీ ${currentPage} / ${pageCount}` : `Page ${currentPage} of ${pageCount}`}
               </span>
               <button
                 type="button"
-                onClick={() => setCurrentPage(Math.min(4, currentPage + 1))}
-                disabled={currentPage === 4}
+                onClick={() => setCurrentPage(Math.min(pageCount, currentPage + 1))}
+                disabled={currentPage >= pageCount}
                 className="p-1 rounded hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition-colors"
                 title="Next page"
               >
@@ -183,11 +173,12 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
             <button
               type="button"
               onClick={() => handleStartClip(leadStory)}
+              disabled={!leadStory}
               className="px-4 py-2 bg-[#990000] hover:bg-[#800000] text-white rounded-lg font-bold text-xs md:text-sm flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 border border-red-700"
-              title={isTelugu ? 'వార్తలను క్రాప్ చేసి క్లిప్ తీయండి' : 'Crop & Create News Clip'}
+              title={isTelugu ? 'వార్తలను క్రాప్ చేసి క్లిప్ తీయండి' : 'Create News Clip'}
             >
               <DashedClipIcon className="w-4 h-4 text-white" />
-              <span>{isTelugu ? 'వార్త క్లిప్ తీయండి' : 'Crop News Clip'}</span>
+              <span>{isTelugu ? 'వార్త క్లిప్ తీయండి' : 'Create News Clip'}</span>
             </button>
           </div>
         </div>
@@ -207,7 +198,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
             <div className="flex items-center justify-between text-[11px] font-sans font-bold text-slate-700 uppercase tracking-widest pb-1 border-b border-slate-300">
               <span>{isTelugu ? 'తెలుగు రాష్ట్రాల నంబర్ 1 దినపత్రిక' : 'AP & Telangana Premier Broadsheet'}</span>
               <span>{todayFormatted}</span>
-              <span>{isTelugu ? 'ధర: ₹5.00' : 'Price: ₹5.00'}</span>
+              <span>{isTelugu ? 'ఉచిత డిజిటల్ పఠనం' : 'Free Digital Reading'}</span>
             </div>
 
             <div className="py-2.5 flex flex-col items-center justify-center">
@@ -219,7 +210,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
             </div>
 
             <div className="flex items-center justify-between text-xs font-sans font-semibold text-slate-700 border-t-2 border-slate-900 pt-1.5 mt-1">
-              <span>{selectedEdition.toUpperCase()} EDITION</span>
+              <span>{isTelugu ? 'తాజా వార్తలు' : 'LATEST STORIES'}</span>
               <span className="text-red-800 uppercase font-black tracking-wider">
                 {isTelugu ? 'రైతు, అభివృద్ధి, పాలన ప్రత్యేక వార్తలు' : 'DEVELOPMENT & DEMOCRACY SPECIAL'}
               </span>
@@ -237,6 +228,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                 <button
                   type="button"
                   onClick={() => handleStartClip(leadStory)}
+              disabled={!leadStory}
                   className="absolute top-0 right-0 bg-[#990000] text-white text-[11px] font-bold px-2.5 py-1 rounded shadow flex items-center gap-1.5 hover:bg-red-800 transition-all opacity-90 group-hover:opacity-100"
                   title="Crop this story"
                 >
@@ -251,7 +243,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                   {isTelugu && leadStory?.headlineTe ? leadStory.headlineTe : leadStory?.headline}
                 </h2>
                 <div className="text-xs font-sans text-slate-600 italic mb-3 flex items-center gap-2">
-                  <span>{isTelugu ? 'అమరావతి బ్యూరో — ప్రత్యేక ప్రతినిధి' : 'Amaravati Bureau — Special Correspondent'}</span>
+                  <span>{isTelugu && leadStory?.locationTe ? leadStory.locationTe : leadStory?.location}</span>
                   <span>•</span>
                   <span>{todayFormatted}</span>
                 </div>
@@ -259,12 +251,12 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                 {leadStory?.featuredImage && (
                   <div className="my-3 border border-slate-300 p-1 bg-white">
                     <img
-                      src={leadStory.featuredImage}
+                      src={safeUrl(leadStory.featuredImage, '/brand/sunrise-news-logo.jpg')}
                       alt={leadStory.headline}
                       className="w-full aspect-[16/9] object-cover grayscale contrast-125"
                     />
                     <p className="text-[11px] font-sans text-slate-600 italic p-1 bg-slate-50">
-                      {leadStory.imageCaption || 'Overview of regional capital construction works.'}
+                      {leadStory.imageCaption}
                     </p>
                   </div>
                 )}
@@ -276,16 +268,14 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                       {isTelugu && leadStory?.summaryTe ? leadStory.summaryTe : leadStory?.summary}
                     </p>
                     <p className="text-slate-700">
-                      {leadStory?.body.slice(0, 320).replace(/#{1,6}\s+/g, '')}
+                      {leadBody.slice(0, 320).replace(/#{1,6}\s+/g, '')}
                     </p>
                   </div>
                   <div>
                     <p className="text-slate-700 mb-2">
-                      {leadStory?.body.slice(320, 750).replace(/#{1,6}\s+/g, '')}
+                      {leadBody.slice(320, 750).replace(/#{1,6}\s+/g, '')}
                     </p>
-                    <div className="border-l-2 border-slate-800 pl-2 text-[11px] font-serif italic text-slate-900 bg-slate-100 p-1.5 rounded-sm">
-                      &ldquo;The priority is transparent execution and citizen trust across regional governance.&rdquo;
-                    </div>
+
                   </div>
                 </div>
               </div>
@@ -362,7 +352,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                     </button>
 
                     <span className="text-[10px] font-sans font-black text-red-700 uppercase block mb-1">
-                      {isTelugu ? 'నిజనిర్ధారణ డెస్క్' : 'FACT CHECK'}
+                      {factCheckStory.format === 'fact-check' ? (isTelugu ? 'నిజనిర్ధారణ' : 'FACT CHECK') : (isTelugu ? 'మరిన్ని వార్తలు' : 'MORE NEWS')}
                     </span>
                     <h4 className="text-sm font-bold text-slate-900 mb-1 font-serif pr-12">
                       {isTelugu && factCheckStory.headlineTe ? factCheckStory.headlineTe : factCheckStory.headline}
@@ -383,7 +373,7 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
                 <p className="text-xs text-slate-300 mt-1 font-sans">
                   {isTelugu
                     ? 'ఏదైనా వార్తపై క్లిక్ చేసి లేదా క్రాప్ బటన్ నొక్కి వాట్సాప్ మరియు సోషల్ మీడియాలో షేర్ చేయండి.'
-                    : 'Crop any newspaper section and share formatted image to WhatsApp.'}
+                    : 'Create a formatted image of a published story to download or share.'}
                 </p>
                 <button
                   type="button"
@@ -399,8 +389,8 @@ export default function EPaperPage({ params }: { params: { lang: string } }) {
 
           {/* Broadsheet Footer */}
           <div className="border-t-2 border-slate-900 p-3 bg-[#FAF7EE] text-[11px] font-sans text-slate-600 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Published on behalf of Sharon Media Publications. Press Council of India standards.</span>
-            <span>https://sunrisenews.in • Official Digital E-Paper</span>
+            <span>Sunrise News — Published stories in a newspaper layout.</span>
+            <span>{siteUrl} • Digital Reading Edition</span>
           </div>
         </div>
       </div>

@@ -2,12 +2,13 @@ import React from 'react';
 import { Shield, CheckCircle2, FileText, AlertTriangle } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function EditorialStandardsPage({
+export default async function EditorialStandardsPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   return (

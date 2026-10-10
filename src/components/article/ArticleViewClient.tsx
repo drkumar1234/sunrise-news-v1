@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { 
-  Clock, MapPin, ChevronRight, ShieldCheck, 
-  AlertCircle, MessageSquare, CheckCircle2 
+import {
+  Clock, MapPin, ChevronRight, ShieldCheck,
+  AlertCircle
 } from 'lucide-react';
 import { Article, Category, Author, AdPlacement, Language } from '@/types';
 import { ReaderTools } from '@/components/article/ReaderTools';
@@ -13,6 +13,7 @@ import { FactCheckVerdict } from '@/components/article/FactCheckVerdict';
 import { CorrectionsNotice } from '@/components/article/CorrectionsNotice';
 import { NewsCard } from '@/components/article/NewsCard';
 import { AdBanner } from '@/components/ui/AdBanner';
+import { serializeJsonLd, safeUrl } from '@/lib/content-safety';
 
 interface ArticleViewClientProps {
   article: Article;
@@ -22,6 +23,7 @@ interface ArticleViewClientProps {
   sidebarAd?: AdPlacement;
   midArticleAd?: AdPlacement;
   lang: Language;
+  siteUrl: string;
 }
 
 export function ArticleViewClient({
@@ -32,57 +34,12 @@ export function ArticleViewClient({
   sidebarAd,
   midArticleAd,
   lang,
+  siteUrl,
 }: ArticleViewClientProps) {
   const isTelugu = lang === 'te';
 
   // State for reader tools font size
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
-
-  // Comment state
-  const [comments, setComments] = useState<{ name: string; text: string; time: string }[]>([
-    {
-      name: 'P. Srinivasa Rao',
-      text: isTelugu
-        ? 'ఈ ప్రాజెక్ట్ త్వరితగతిన పూర్తి కావడం ఆంధ్రప్రదేశ్ అభివృద్ధికి అత్యంత అవసరం. సమగ్రమైన విశ్లేషణను అందించిన సన్‌రైజ్ న్యూస్ బృందానికి ధన్యవాదాలు.'
-        : 'Crucial analysis for the regional economy. The government must maintain strict transparency on deadlines.',
-      time: '2 hours ago',
-    }
-  ]);
-  const [commentName, setCommentName] = useState('');
-  const [commentText, setCommentText] = useState('');
-  const [commentSubmitted, setCommentSubmitted] = useState(false);
-
-  // Error report modal state
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reportText, setReportText] = useState('');
-  const [reportSubmitted, setReportSubmitted] = useState(false);
-
-  const handleCommentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentName || !commentText) return;
-    setComments([
-      ...comments,
-      {
-        name: commentName,
-        text: commentText,
-        time: 'Just now (Awaiting editorial approval)',
-      }
-    ]);
-    setCommentName('');
-    setCommentText('');
-    setCommentSubmitted(true);
-  };
-
-  const handleReportSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reportText) return;
-    setReportSubmitted(true);
-    setTimeout(() => {
-      setReportModalOpen(false);
-      setReportSubmitted(false);
-      setReportText('');
-    }, 2000);
-  };
 
   const headline = isTelugu && article.headlineTe ? article.headlineTe : article.headline;
   const summary = isTelugu && article.summaryTe ? article.summaryTe : article.summary;
@@ -94,12 +51,12 @@ export function ArticleViewClient({
 
   const publishedDateFormatted = new Date(article.publishedAt).toLocaleDateString(
     isTelugu ? 'te-IN' : 'en-IN',
-    { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }
   );
 
   const updatedDateFormatted = new Date(article.updatedAt).toLocaleDateString(
     isTelugu ? 'te-IN' : 'en-IN',
-    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }
   );
 
   // Schema.org JSON-LD Structured Data
@@ -108,7 +65,7 @@ export function ArticleViewClient({
     '@type': 'NewsArticle',
     mainEntityOfPage: {
       '@type': 'WebPage',
-      '@id': `https://sunrisenews.in/${lang}/article/${encodeURIComponent(article.slug)}`,
+      '@id': `${siteUrl}/${lang}/article/${encodeURIComponent(article.slug)}`,
     },
     headline: headline,
     image: [article.featuredImage],
@@ -117,14 +74,14 @@ export function ArticleViewClient({
     author: {
       '@type': 'Person',
       name: authorName,
-      url: `https://sunrisenews.in/${lang}/authors/${author?.slug || 'editorial'}`,
+      url: `${siteUrl}/${lang}/authors/${encodeURIComponent(author?.slug || 'editorial')}`,
     },
     publisher: {
       '@type': 'Organization',
       name: 'Sunrise News',
       logo: {
         '@type': 'ImageObject',
-        url: 'https://sunrisenews.in/logo.png',
+        url: `${siteUrl}/logo.png`,
       },
     },
     description: summary,
@@ -136,7 +93,7 @@ export function ArticleViewClient({
       {/* Schema.org Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       {/* 1. BREADCRUMBS */}
@@ -147,7 +104,7 @@ export function ArticleViewClient({
         <ChevronRight className="w-3 h-3 text-slate-400" />
         {category && (
           <>
-            <Link href={`/${lang}/category/${category.slug}`} className="hover:text-brand-orange font-medium">
+            <Link href={`/${lang}/category/${encodeURIComponent(category.slug)}`} className="hover:text-brand-orange font-medium">
               {catName}
             </Link>
             <ChevronRight className="w-3 h-3 text-slate-400" />
@@ -162,7 +119,7 @@ export function ArticleViewClient({
         <div className="flex items-center gap-3 mb-3 flex-wrap">
           {category && (
             <Link
-              href={`/${lang}/category/${category.slug}`}
+              href={`/${lang}/category/${encodeURIComponent(category.slug)}`}
               className="px-3 py-1 rounded-full bg-brand-navy text-white text-xs font-bold uppercase tracking-wider hover:bg-brand-navy-light transition-colors"
             >
               {catName}
@@ -196,7 +153,7 @@ export function ArticleViewClient({
           <div className="flex items-center gap-3">
             {author && (
               <img
-                src={author.avatar}
+                src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
                 alt={authorName}
                 className="w-11 h-11 rounded-full object-cover border border-slate-300 shadow-sm"
               />
@@ -230,7 +187,7 @@ export function ArticleViewClient({
       {/* 3. FEATURED IMAGE WITH CAPTION & CREDIT */}
       <figure className="max-w-5xl mb-8 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
         <img
-          src={article.featuredImage}
+          src={safeUrl(article.featuredImage, '/brand/sunrise-news-logo.jpg')}
           alt={headline}
           className="w-full aspect-[16/9] object-cover"
         />
@@ -253,7 +210,7 @@ export function ArticleViewClient({
           {/* Interactive Reader Tools with News Clipper */}
           <ReaderTools
             headline={headline}
-            articleUrl={`/${lang}/article/${encodeURIComponent(article.slug)}`}
+            articleUrl={`${siteUrl}/${lang}/article/${encodeURIComponent(article.slug)}`}
             lang={lang}
             onFontSizeChange={(size) => setFontSize(size)}
             summary={summary}
@@ -308,20 +265,19 @@ export function ArticleViewClient({
                   : 'Notice a factual or typographical error in this story? Inform our editorial desk.'}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setReportModalOpen(true)}
+            <Link
+              href={`/${lang}/contact`}
               className="px-3 py-1.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-xs font-bold text-slate-800 whitespace-nowrap transition-colors"
             >
               {isTelugu ? 'సవరణ నివేదించండి' : 'Report Error'}
-            </button>
+            </Link>
           </div>
 
           {/* Author Detailed Bio Card */}
           {author && (
             <div className="my-10 p-6 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start gap-4">
               <img
-                src={author.avatar}
+                src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
                 alt={authorName}
                 className="w-16 h-16 rounded-full object-cover border-2 border-brand-orange flex-shrink-0"
               />
@@ -329,7 +285,7 @@ export function ArticleViewClient({
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-bold text-base text-slate-950">{authorName}</h3>
                   <Link
-                    href={`/${lang}/authors/${author.slug}`}
+                    href={`/${lang}/authors/${encodeURIComponent(author.slug)}`}
                     className="text-xs font-semibold text-brand-orange hover:underline"
                   >
                     {isTelugu ? 'మరిన్ని కథనాలు' : 'View Articles'}
@@ -346,68 +302,9 @@ export function ArticleViewClient({
             </div>
           )}
 
-          {/* Reader Moderated Comments Section */}
           <section className="my-10 pt-8 border-t border-slate-200" aria-label="Reader Comments">
-            <h3 className="text-xl font-bold text-slate-950 flex items-center gap-2 mb-6">
-              <MessageSquare className="w-5 h-5 text-brand-orange" />
-              <span>{isTelugu ? 'పాఠకుల స్పందనలు (Comments)' : 'Reader Discussion'}</span>
-              <span className="text-sm font-normal text-slate-500">({comments.length})</span>
-            </h3>
-
-            {/* Comment Form */}
-            <form onSubmit={handleCommentSubmit} className="mb-8 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-              <h4 className="text-xs font-bold text-slate-700 uppercase">
-                {isTelugu ? 'మీ అభిప్రాయాన్ని తెలపండి:' : 'Leave a Comment (Subject to Moderation):'}
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder={isTelugu ? 'మీ పేరు' : 'Your full name'}
-                  value={commentName}
-                  onChange={(e) => setCommentName(e.target.value)}
-                  required
-                  className="px-3 py-2 border rounded-lg text-sm bg-white"
-                />
-              </div>
-              <textarea
-                placeholder={isTelugu ? 'గౌరవప్రదమైన భాషలో మీ అభిప్రాయాన్ని రాయండి...' : 'Share your respectful perspective...'}
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                required
-                rows={3}
-                className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-500">
-                  {isTelugu ? 'అన్ని వ్యాఖ్యలు సంపాదకీయ సమీక్షకు లోబడి ఉంటాయి.' : 'Comments are reviewed before publication.'}
-                </span>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-brand-navy hover:bg-brand-navy-light text-white rounded-lg text-xs font-bold transition-colors"
-                >
-                  {isTelugu ? 'వ్యాఖ్యను పంపండి' : 'Post Comment'}
-                </button>
-              </div>
-              {commentSubmitted && (
-                <div className="text-xs text-emerald-700 font-semibold mt-2 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{isTelugu ? 'మీ వ్యాఖ్య సమర్పించబడింది! త్వరలోనే ప్రచురించబడుతుంది.' : 'Your comment was submitted for editorial moderation.'}</span>
-                </div>
-              )}
-            </form>
-
-            {/* Published Comments List */}
-            <div className="space-y-4">
-              {comments.map((c, idx) => (
-                <div key={idx} className="p-4 rounded-lg border border-slate-100 bg-white shadow-sm space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 text-sm">{c.name}</span>
-                    <span className="text-[11px] text-slate-400">{c.time}</span>
-                  </div>
-                  <p className="text-xs text-slate-700 leading-relaxed">{c.text}</p>
-                </div>
-              ))}
-            </div>
+            <h3 className="text-xl font-bold text-slate-950 mb-3">{isTelugu ? 'పాఠకుల స్పందనలు' : 'Reader Discussion'}</h3>
+            <p className="text-sm text-slate-600">{isTelugu ? 'ఆన్‌లైన్ వ్యాఖ్యలు ప్రస్తుతం అందుబాటులో లేవు.' : 'Online comments are not available yet.'}</p>
           </section>
         </div>
 
@@ -439,53 +336,6 @@ export function ArticleViewClient({
         </aside>
       </div>
 
-      {/* Error Report Modal */}
-      {reportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-slate-900">
-              {isTelugu ? 'సంపాదక బృందానికి సవరణ నివేదించండి' : 'Report an Error to the Editorial Desk'}
-            </h3>
-            <p className="text-xs text-slate-600">
-              {isTelugu
-                ? 'సన్‌రైజ్ న్యూస్ ఖచ్చితత్వానికి ప్రాధాన్యత ఇస్తుంది. తప్పు ఉన్న భాగం మరియు ఆధారాలను వివరించండి.'
-                : 'Sunrise News takes factual accuracy seriously. Please describe the error and provide primary sources.'}
-            </p>
-            {reportSubmitted ? (
-              <div className="p-4 bg-emerald-50 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>{isTelugu ? 'మీ నివేదిక నమోదైంది. మా ఎడిటర్లు పరిశీలిస్తారు.' : 'Thank you. The editorial desk has received your note.'}</span>
-              </div>
-            ) : (
-              <form onSubmit={handleReportSubmit} className="space-y-3">
-                <textarea
-                  rows={4}
-                  required
-                  value={reportText}
-                  onChange={(e) => setReportText(e.target.value)}
-                  placeholder={isTelugu ? 'సవరణ చేయవలసిన వాక్యం లేదా అంశాన్ని ఇక్కడ రాయండి...' : 'Describe the factual inaccuracy...'}
-                  className="w-full p-3 border rounded-lg text-sm bg-slate-50 focus:bg-white"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setReportModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-                  >
-                    {isTelugu ? 'రద్దు చేయి' : 'Cancel'}
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-dark rounded-lg shadow-sm"
-                  >
-                    {isTelugu ? 'నివేదిక పంపండి' : 'Submit Report'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
     </article>
   );
 }

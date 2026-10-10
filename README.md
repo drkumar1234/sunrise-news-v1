@@ -1,101 +1,67 @@
-# SUNRISE NEWS — Advanced Digital Newsroom Publishing Platform
+# Sunrise News
 
-> **"Your World. Your News. Every Day."**  
-> **"మీ ప్రపంచం. మీ వార్తలు. అనునిత్యం."**
+English and Telugu news website with a private newsroom CMS, built with Next.js, React and Tailwind CSS.
 
-**SUNRISE NEWS** is a complete, production-grade digital news publishing platform built for an Indian audience, with dedicated editorial architecture for Andhra Pradesh, Telangana, regional journalism, Telugu-language readers, and English-language readers.
+## Newsroom features
 
----
+- Owner login with signed, expiring HttpOnly cookies and persistent login throttling.
+- Article drafts, review, approval, publishing and archiving; bilingual content, tags, SEO fields, internal notes and revision restores.
+- Saved categories, tags, advertising placements and breaking-news ticker settings.
+- Image and document uploads (PDF, DOCX, TXT, MD, JPG, PNG and WebP, maximum 4 MB), with text extraction when supported.
+- Private subscriber list and audit history. Newsletter signup records subscriptions; sending email editions requires a separate email delivery service.
+- Published articles appear in public pages, search and XML sitemaps. Drafts, private notes, revisions and unreferenced uploads require administrator access.
 
-## 🌟 Key Platform Features
+This deployment has one owner account. Author bylines are editorial records, not additional login accounts. Comments and online contact submissions are unavailable; the contact page provides the configured newsroom contact details. The e-paper view presents published web stories.
 
-### 1. Brand Identity & Visual Aesthetics
-- **Original Vector Brand Logo**: Features an iconic rising sun motif over horizon lines with bilingual English ("SUNRISE NEWS") and Telugu ("సన్‌రైజ్ న్యూస్") treatments.
-- **Harmonious Color Palette**:
-  - **Navy Primary**: `#0B192C` (Deep, authoritative navy)
-  - **Sunrise Orange**: `#FF6B35` (Energizing morning accent)
-  - **Morning Gold**: `#FFB703` (Warm glow highlights)
-  - **Breaking Red**: `#DC2626` (Urgent news pulse)
-  - **Clean Surfaces**: `#FFFFFF` and `#F8FAFC`
-- **Bilingual Web Typography**: Seamless rendering with `Inter` (English) and `Noto Sans Telugu` (Telugu).
+## Local development
 
-### 2. Full Public Website Architecture (33 Pages)
-- **Core Pages**: Homepage (`/[lang]`), Latest News (`/[lang]/latest`), Trending Stories (`/[lang]/trending`), Top Stories (`/[lang]/top-stories`), Breaking News Feed (`/[lang]/breaking`), Rich Article (`/[lang]/article/[slug]`), Category Archives (`/[lang]/category/[slug]`), Multilingual Search (`/[lang]/search`), About Us (`/[lang]/about`), Contact Us (`/[lang]/contact`).
-- **Editorial Credibility Pages**: Editorial & Opinion (`/[lang]/editorial-opinion`), Special Reports (`/[lang]/special-reports`), Investigations (`/[lang]/investigations`), Explainers (`/[lang]/explainers`), Fact-Check Registry (`/[lang]/fact-checks`), Corrections & Updates Log (`/[lang]/corrections`), Authors Directory (`/[lang]/authors`), Editorial Standards Charter (`/[lang]/editorial-standards`), Corrections Policy (`/[lang]/corrections-policy`), Ethics & Financial Transparency (`/[lang]/ethics-transparency`).
-- **Multimedia Pages**: Video News Hub (`/[lang]/videos`), Photo Stories Gallery (`/[lang]/photos`), Infographics & Data Charts (`/[lang]/infographics`), Podcasts & Audio (`/[lang]/podcasts`), Live Blog Updates (`/[lang]/live`).
-- **Audience & Regulatory**: Newsletter Signup (`/[lang]/newsletter`), Privacy Policy compliant with Indian DPDP Act 2023 (`/[lang]/privacy`), Terms of Service (`/[lang]/terms`), Cookie Policy (`/[lang]/cookie-policy`), Media Kit & Advertising (`/[lang]/advertise`), Accessibility Statement (`/[lang]/accessibility`), HTML Sitemap (`/[lang]/sitemap`), Custom 404 Page.
+Use Node.js 22 LTS.
 
-### 3. Advanced Newsroom CMS (`/admin`)
-- **Role-Based Access Control (RBAC)**:
-  - **Super Administrator**: Complete system configuration, advertising campaigns, category management, and audit logs.
-  - **Senior Editor**: Story approval queue, corrections management, revision restores, and publishing.
-  - **Field Reporter**: Draft creation, personal beat submissions, and fact-check submissions.
-- **Bilingual Rich Article Editor**:
-  - Bilingual headline, summary, and formatted markdown bodies.
-  - Automatic SEO URL slug generator with manual override.
-  - Canonical Tag autocomplete with duplicate prevention (e.g. mapping `vizag` -> `visakhapatnam`).
-  - Private internal newsroom notes (never leaked to public APIs).
-  - Version Control / Revision History drawer with 1-click restore.
-  - Fact-check verdict evaluation generator.
-- **Breaking News Ticker Manager**: Toggle live ticker on/off and update alerts in real-time.
-- **Ad Campaigns Manager**: Control leaderboard (728x90), sidebar (300x250), and mid-content native ads.
-- **Newsletter Subscribers**: Filter list with 1-click CSV export.
-- **Editorial Audit Trail**: Immutable timeline of who modified, approved, or published any content.
-
-### 4. SEO & Google News Readiness
-- Schema.org JSON-LD `NewsArticle`, `BreadcrumbList`, and `Organization` structured data on every story.
-- Dynamic XML Sitemap: `/sitemap.xml`.
-- Official Google News XML Sitemap: `/news-sitemap.xml` with `<news:news>` and `<news:publication>` tags.
-- Search Engine Crawler Directives: `/robots.txt`.
-
----
-
-## 🚀 Quick Start & Local Development
-
-### Prerequisites
-Node.js v18+ or v20+ LTS is pre-configured in the environment.
-
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Run the Development Server
-```bash
+```sh
+npm ci
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 3. Access the Newsroom CMS
-Navigate to [http://localhost:3000/admin/login](http://localhost:3000/admin/login).
+Create `.env.local` (ignored by Git) with your own credentials:
 
-**Demo Credentials**:
-- **Super Administrator**: Click "Super Administrator" or login with passcode `newsroom2026`.
-- **Senior Editor**: Click "Senior Editor".
-- **Field Reporter**: Click "Field Reporter".
-
----
-
-## 🗄️ Database Architecture & Deployment
-
-### 1. Local Zero-Setup Transactional Store
-By default, Sunrise News operates on an atomic, file-backed transactional repository located at:
+```dotenv
+SUNRISE_STORAGE=local
+ADMIN_EMAIL=your-owner-email@example.com
+ADMIN_PASSWORD=replace-with-a-unique-password-at-least-12-characters
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
-data/sunrise_news.json
-```
-This requires zero external database configuration to run immediately, allowing full offline development, testing, and demonstration.
 
-### 2. Production PostgreSQL Migration
-For enterprise newsroom cloud deployments (Vercel, AWS RDS, Supabase, Neon, Railway), use the production SQL schema provided in:
-```
-database/schema.sql
-```
-This script creates all tables, foreign keys, full-text indexes, and audit logs.
+Open `http://localhost:3000/en` or `http://localhost:3000/te`; the CMS is at `/admin/login`. There are no demo credentials or role-selection shortcuts. Never commit real passwords.
 
----
+Local data is stored in `data/sunrise_news.json`. Private authentication state is in `data/.cms-store`, and uploads are in `data/media`. Set `SUNRISE_DATA_DIR` to a separate directory when testing. The session signing key is generated cryptographically once and saved in private storage. An optional `SESSION_SECRET` of at least 32 characters overrides it. Changing the owner email/password or signing key invalidates existing sessions.
 
-## 🔒 Compliance & Standards
-- **Indian IT Rules, 2021 (Rule 11)**: Grievance Redressal Officer published on every page footer.
-- **Digital Personal Data Protection Act, 2023 (DPDP)**: Explicit consent collection for newsletters with 1-click withdrawal.
-- **WCAG 2.1 AA Accessibility**: High-contrast ratios, keyboard focus rings, font resizer (A- / A+), screen reader ARIA landmarks, and reduced motion support.
-- **Press Council of India Guidelines**: Non-stealth corrections policy and mandatory commercial separation.
+```sh
+npm test
+npm run build
+npm start
+```
+
+## Netlify deployment
+
+Import this GitHub repository into Netlify. `netlify.toml` sets the build command, publish directory and Node version. Netlify's Next.js adapter provides the server runtime.
+
+Set these project environment variables for the **Production** deploy context, including the Functions scope:
+
+| Key | Value |
+| --- | --- |
+| `SUNRISE_STORAGE` | `netlify` |
+| `NEXT_PUBLIC_SITE_URL` | Your HTTPS public site URL |
+| `ADMIN_EMAIL` | Your owner login email |
+| `ADMIN_PASSWORD` | Your unique password, at least 12 characters; mark as secret |
+
+Redeploy after changing environment variables. Keep administrator credentials out of untrusted preview contexts. The CMS refuses login when credentials are missing.
+
+Netlify Blobs stores the CMS database, private signing key, login limits and uploaded files across function restarts and deployments. It uses site-wide stores, strong reads and conditional writes to prevent concurrent updates from silently overwriting each other. No separate database account or storage API key is needed on Netlify. The tracked `data/sunrise_news.json` snapshot seeds an empty store; later deployments do not replace saved CMS content.
+
+Back up production Blobs content and media before deleting or moving the Netlify project. Local edits to `data/sunrise_news.json` do not update an already initialized production store. This JSON store is intended for a small newsroom; large content collections or heavy concurrent traffic warrant a database migration.
+
+Netlify's Free plan has usage limits. Check the account's usage dashboard; free hosting does not guarantee unlimited traffic or uninterrupted service after its allowance is exhausted. This application does not enable paid upgrades.
+
+## Dependency maintenance
+
+Next.js is updated to 15.5.27 with React 19. The Next.js PostCSS dependency is overridden to 8.5.29 for security fixes. The deployment audit has no high or critical production dependency findings. Three related moderate notices remain for mammoth/argparse/sprintf-js in the unused DOCX command-line dependency chain; the web application uses the mammoth library and does not load that CLI. Recheck npm audit when updating packages.

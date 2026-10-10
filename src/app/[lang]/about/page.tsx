@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { Shield, Target, Compass, Award, Building } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function AboutUsPage({
+export default async function AboutUsPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   return (

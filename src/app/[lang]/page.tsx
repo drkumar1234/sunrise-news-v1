@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { 
   TrendingUp, Clock, ChevronRight, ShieldCheck, 
@@ -7,22 +8,27 @@ import {
 import { 
   getArticles, getCategories, getAuthors, 
   getActiveAd, getSettings 
-} from '@/lib/db';
+} from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { AdBanner } from '@/components/ui/AdBanner';
 import { Language } from '@/types';
 
-export default function HomePage({ params }: { params: { lang: string } }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+export const dynamic = 'force-dynamic';
+
+export default async function HomePage({ params }: { params: Promise<{ lang: string }> }) {
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   // Fetch categorized articles
-  const { articles: allPublished } = getArticles({ status: 'published' });
-  const categories = getCategories();
-  const authors = getAuthors();
-  const leaderboardAd = getActiveAd('leaderboard');
-  const sidebarAd = getActiveAd('sidebar');
-  const midContentAd = getActiveAd('mid_content');
+  const [{ articles: allPublished }, categories, authors, leaderboardAd, sidebarAd, midContentAd] = await Promise.all([
+    getArticles({ status: 'published' }),
+    getCategories(),
+    getAuthors(),
+    getActiveAd('leaderboard'),
+    getActiveAd('sidebar'),
+    getActiveAd('mid_content'),
+  ]);
 
   // Lead story
   const leadStory = allPublished.find(a => a.isLeadStory) || allPublished[0];
@@ -334,7 +340,7 @@ export default function HomePage({ params }: { params: { lang: string } }) {
                 {author && (
                   <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200">
                     <img
-                      src={author.avatar}
+                      src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
                       alt={author.name}
                       className="w-10 h-10 rounded-full object-cover border border-slate-300"
                     />

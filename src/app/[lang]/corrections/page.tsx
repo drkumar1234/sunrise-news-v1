@@ -1,18 +1,21 @@
 import React from 'react';
 import Link from 'next/link';
 import { History as HistoryIcon, ShieldAlert, CheckCircle2, ChevronRight } from 'lucide-react';
-import { getArticles } from '@/lib/db';
+import { getArticles } from '@/lib/public-articles';
 import { Language } from '@/types';
 
-export default function CorrectionsLogPage({
+export const dynamic = 'force-dynamic';
+
+export default async function CorrectionsLogPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ status: 'published' });
+  const { articles } = await getArticles({ status: 'published' });
   const articlesWithCorrections = articles.filter(a => a.corrections && a.corrections.length > 0);
 
   return (
@@ -80,7 +83,7 @@ export default function CorrectionsLogPage({
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <Link
-                      href={`/${lang}/article/${art.slug}`}
+                      href={`/${lang}/article/${encodeURIComponent(art.slug)}`}
                       className="text-base font-bold text-slate-900 hover:text-brand-orange transition-colors flex items-center gap-1.5"
                     >
                       <span>{headline}</span>

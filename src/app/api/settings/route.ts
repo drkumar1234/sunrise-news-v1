@@ -1,22 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { getSettings, updateSettings } from '@/lib/db';
-
+import { requireAdmin, json, apiError } from '@/lib/auth';
+import { settingsInput, readJson } from '@/lib/validation';
+export const dynamic = 'force-dynamic';
 export async function GET() {
-  try {
-    const settings = getSettings();
-    return NextResponse.json({ settings });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
-  }
+  try { return json({ settings: await getSettings() }); }
+  catch (error) { return apiError(error); }
 }
-
-export async function PUT(request: NextRequest) {
+export async function PUT(request: Request) {
   try {
-    const body = await request.json();
-    const defaultUser = { id: 'usr-admin', name: 'Super Admin' };
-    const updated = updateSettings(body, defaultUser);
-    return NextResponse.json({ settings: updated });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
-  }
+    const user = await requireAdmin(request);
+    return json({ settings: await updateSettings(settingsInput(await readJson(request, 40000)), user) });
+  } catch (error) { return apiError(error); }
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AdPlacement, Language } from '@/types';
+import { safeUrl } from '@/lib/content-safety';
 
 interface AdBannerProps {
   ad?: AdPlacement;
@@ -33,13 +34,13 @@ export const AdBanner: React.FC<AdBannerProps> = ({
         {label}
       </span>
       <a
-        href={ad.targetUrl}
+        href={safeUrl(ad.targetUrl)}
         target="_blank"
         rel="noopener noreferrer sponsored"
         className="block w-full h-full rounded-lg overflow-hidden border border-slate-200 shadow-sm relative group bg-slate-100 transition-transform hover:scale-[1.01]"
       >
         <img
-          src={ad.imageUrl}
+          src={safeUrl(ad.imageUrl, '/brand/sunrise-news-logo.jpg')}
           alt={ad.title}
           className="w-full h-full object-cover"
           loading="lazy"

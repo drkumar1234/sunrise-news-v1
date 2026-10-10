@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
 
-export default function ArticleIndexPage({
+export default async function ArticleIndexPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang = resolvedParams.lang === 'te' ? 'te' : 'en';
   redirect(`/${lang}/latest`);
 }

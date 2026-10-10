@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FolderTree, Plus, Edit2, Check, Folder } from 'lucide-react';
 import { Category } from '@/types';
-import { getCategories } from '@/lib/db';
+import { adminRequest, saveAdmin } from '@/lib/admin-client';
 
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -15,12 +15,14 @@ export default function AdminCategoriesPage() {
   const [parentId, setParentId] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setCategories(getCategories());
+    adminRequest('/api/admin/categories').then(data => setCategories(data.categories)).catch(error => setError(error.message));
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nameEn || !nameTe) return;
 
@@ -32,10 +34,14 @@ export default function AdminCategoriesPage() {
       descriptionEn,
       descriptionTe,
       parentId: parentId || undefined,
-      displayOrder: categories.length + 1,
-      featured: true,
+      displayOrder: categories.find(c => c.id === editingId)?.displayOrder ?? categories.length + 1,
+      featured: categories.find(c => c.id === editingId)?.featured ?? true,
     };
 
+    setSaving(true);
+    setError('');
+    try {
+    await saveAdmin('/api/admin/categories', newCategory);
     let updatedList = [...categories];
     if (editingId) {
       updatedList = updatedList.map(c => c.id === editingId ? newCategory : c);
@@ -53,6 +59,8 @@ export default function AdminCategoriesPage() {
     setParentId('');
     setEditingId(null);
     setTimeout(() => setToast(''), 2500);
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to save category.'); }
+    finally { setSaving(false); }
   };
 
   const startEdit = (cat: Category) => {
@@ -76,6 +84,7 @@ export default function AdminCategoriesPage() {
         </div>
       </div>
 
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
       {toast && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-600" />
@@ -91,7 +100,7 @@ export default function AdminCategoriesPage() {
             <span>{editingId ? 'Edit Category' : 'Create New Category'}</span>
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+          <form onSubmit={handleSubmit} className="space-y-3 text-xs" aria-busy={saving}>
             <div>
               <label className="block font-bold text-slate-700 uppercase mb-1">Name (English): *</label>
               <input
@@ -163,7 +172,7 @@ export default function AdminCategoriesPage() {
 
             <div className="pt-2 flex gap-2">
               <button
-                type="submit"
+                type="submit" disabled={saving}
                 className="flex-1 py-2.5 bg-brand-navy hover:bg-brand-navy-light text-white rounded-lg font-bold transition-colors"
               >
                 {editingId ? 'Update Category' : 'Add Category'}
@@ -171,7 +180,7 @@ export default function AdminCategoriesPage() {
               {editingId && (
                 <button
                   type="button"
-                  onClick={() => { setEditingId(null); setNameEn(''); setNameTe(''); }}
+                  onClick={() => { setEditingId(null); setNameEn(''); setNameTe(''); setSlug(''); setDescriptionEn(''); setDescriptionTe(''); setParentId(''); }}
                   className="px-4 py-2.5 bg-slate-200 text-slate-700 rounded-lg font-bold"
                 >
                   Cancel

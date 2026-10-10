@@ -35,3 +35,12 @@ yarn-error.log*
 next-env.d.ts
 cloudflared.exe
 cred.txt
+/.next-*/
+/.netlify/
+/data/media/
+/data/storage/
+/data/.cms-store/
+/data/*.lock
+/data/*.tmp
+*.local.json
+/work/

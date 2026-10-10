@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { 
-  Download, MessageCircle, Copy, Check, Share2, 
+import { safeUrl } from '@/lib/content-safety';
+import {
+  Download, MessageCircle, Copy, Check, Share2,
   RotateCcw, X, ShieldCheck, ExternalLink, Calendar, MapPin
 } from 'lucide-react';
 import { Language } from '@/types';
+import { getSiteUrl } from '@/lib/site-url';
 
 export interface ClipData {
   headline: string;
@@ -37,7 +39,6 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
 }) => {
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [shareSuccess, setShareSuccess] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string>('');
 
@@ -129,7 +130,7 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
     currentY += 40;
     ctx.fillStyle = '#0F172A';
     ctx.font = 'bold 32px sans-serif';
-    
+
     // Word wrap headline
     const wrapText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number = 4) => {
       const words = text.split(' ');
@@ -197,15 +198,15 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
 
       ctx.fillStyle = '#0B192C';
       ctx.font = 'bold 13px sans-serif';
-      ctx.fillText('SUNRISE NEWS VERIFIED PRESS CLIP', 45, footerY + 5);
+      ctx.fillText('SUNRISE NEWS STORY CLIP', 45, footerY + 5);
 
       ctx.fillStyle = '#64748B';
       ctx.font = '12px sans-serif';
-      ctx.fillText('Read full investigative journalism & updates at https://sunrisenews.in', 45, footerY + 24);
+      ctx.fillText(`Read full investigative journalism & updates at ${getSiteUrl()}`, 45, footerY + 24);
 
       ctx.fillStyle = '#0B192C';
       ctx.font = 'bold 12px sans-serif';
-      ctx.fillText('Press Council of India Compliant', width - 250, footerY + 12);
+      ctx.fillText('Sunrise News', width - 250, footerY + 12);
 
       // Generate preview URL
       try {
@@ -274,12 +275,10 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
   const handleWhatsApp = () => {
     const text = encodeURIComponent(
       `📰 *${clipData.headline}*\n\n${clipData.summary}\n\n👉 Read full story on Sunrise News: ${
-        clipData.url || (typeof window !== 'undefined' ? window.location.href : 'https://sunrisenews.in')
+        clipData.url || (typeof window !== 'undefined' ? window.location.href : getSiteUrl())
       }`
     );
-    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
-    setShareSuccess(true);
-    setTimeout(() => setShareSuccess(false), 3000);
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   // 3. Copy Image to clipboard
@@ -354,7 +353,7 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
               <h3 className="font-bold text-base text-white flex items-center gap-2">
                 <span>{isTelugu ? 'న్యూస్ క్లిప్ సిద్ధమైంది' : 'News Clip Ready'}</span>
                 <span className="px-2 py-0.5 rounded text-[11px] bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30">
-                  {isTelugu ? 'వెరిఫైడ్ క్లిప్' : 'Verified Format'}
+                  {isTelugu ? 'వార్తా కార్డ్' : 'Story Card'}
                 </span>
               </h3>
               <p className="text-xs text-slate-300">
@@ -370,10 +369,10 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
               type="button"
               onClick={onRecrop}
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-medium flex items-center gap-1.5 transition-colors border border-slate-700"
-              title="Adjust crop area"
+              title="Edit card format"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>{isTelugu ? 'మళ్ళీ క్లిప్ చేయండి' : 'Re-crop'}</span>
+              <span>{isTelugu ? 'మళ్ళీ క్లిప్ చేయండి' : 'Edit Card'}</span>
             </button>
             <button
               type="button"
@@ -433,7 +432,7 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
             {clipData.featuredImage && clipData.preset !== 'headline' && (
               <div className="my-3 overflow-hidden rounded border border-slate-300 bg-slate-100">
                 <img
-                  src={clipData.featuredImage}
+                  src={safeUrl(clipData.featuredImage, '/brand/sunrise-news-logo.jpg')}
                   alt={clipData.headline}
                   className="w-full max-h-72 object-cover"
                 />
@@ -460,7 +459,7 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
             <div className="mt-6 pt-3 border-t-2 border-slate-900 flex items-center justify-between text-[11px] text-slate-500">
               <span className="flex items-center gap-1 font-bold text-slate-800">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>sunrisenews.in • Official News Clipping</span>
+                <span>{getSiteUrl()} • Sunrise News Clipping</span>
               </span>
               <span>Press Council Standards Compliant</span>
             </div>
@@ -490,7 +489,7 @@ export const NewsClipResultModal: React.FC<NewsClipResultModalProps> = ({
             <button
               type="button"
               onClick={handleDownload}
-              disabled={downloading}
+              disabled={downloading || !previewDataUrl}
               className="px-4 py-2.5 rounded-lg bg-[#990000] hover:bg-[#800000] text-white font-bold text-xs md:text-sm flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95"
             >
               <Download className="w-4 h-4" />

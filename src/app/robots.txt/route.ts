@@ -1,4 +1,7 @@
+import { getSiteUrl } from '@/lib/site-url';
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const robots = `# Sunrise News Robots Configuration
@@ -7,8 +10,8 @@ Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-Sitemap: https://sunrisenews.in/sitemap.xml
-Sitemap: https://sunrisenews.in/news-sitemap.xml
+Sitemap: ${getSiteUrl()}/sitemap.xml
+Sitemap: ${getSiteUrl()}/news-sitemap.xml
 `;
 
   return new NextResponse(robots, {

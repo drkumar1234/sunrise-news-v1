@@ -1,21 +1,26 @@
 import React from 'react';
 import Link from 'next/link';
 import { ShieldCheck, CheckCircle, AlertTriangle, ShieldAlert, Search } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function FactChecksPage({
+export const dynamic = 'force-dynamic';
+
+export default async function FactChecksPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ format: 'fact-check', status: 'published' });
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [{ articles }, categories, authors] = await Promise.all([
+    getArticles({ format: 'fact-check', status: 'published' }),
+    getCategories(),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">

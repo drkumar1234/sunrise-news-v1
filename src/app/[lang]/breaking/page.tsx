@@ -1,22 +1,27 @@
 import React from 'react';
 import { AlertCircle, Radio } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function BreakingNewsFeedPage({
+export const dynamic = 'force-dynamic';
+
+export default async function BreakingNewsFeedPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   // Articles marked breaking or most recent urgent stories
-  const { articles: all } = getArticles({ status: 'published' });
+  const { articles: all } = await getArticles({ status: 'published' });
   const breakingArticles = all.filter(a => a.isBreaking || a.isLeadStory).slice(0, 6);
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [categories, authors] = await Promise.all([
+    getCategories(),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">

@@ -1,19 +1,25 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { ShieldCheck, Mail, Twitter, ChevronRight } from 'lucide-react';
-import { getAuthors, getArticles } from '@/lib/db';
+import { getAuthors, getArticles } from '@/lib/public-articles';
 import { Language } from '@/types';
 
-export default function AuthorsDirectoryPage({
+export const dynamic = 'force-dynamic';
+
+export default async function AuthorsDirectoryPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const authors = getAuthors();
-  const { articles } = getArticles({ status: 'published' });
+  const [authors, { articles }] = await Promise.all([
+    getAuthors(),
+    getArticles({ status: 'published' }),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -47,7 +53,7 @@ export default function AuthorsDirectoryPage({
               <div>
                 <div className="flex items-center gap-4 mb-4">
                   <img
-                    src={author.avatar}
+                    src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
                     alt={authorName}
                     className="w-16 h-16 rounded-full object-cover border-2 border-brand-orange"
                   />
@@ -85,7 +91,7 @@ export default function AuthorsDirectoryPage({
                   )}
                 </div>
                 <Link
-                  href={`/${lang}/authors/${author.slug}`}
+                  href={`/${lang}/authors/${encodeURIComponent(author.slug)}`}
                   className="text-xs font-bold text-brand-orange hover:underline flex items-center gap-1"
                 >
                   <span>{isTelugu ? 'కథనాలు చూడండి' : 'View Articles'}</span>

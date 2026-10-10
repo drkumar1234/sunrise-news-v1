@@ -1,21 +1,26 @@
 import React from 'react';
 import Link from 'next/link';
 import { Clock, Filter, ChevronRight } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function LatestNewsPage({
+export const dynamic = 'force-dynamic';
+
+export default async function LatestNewsPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ status: 'published' });
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [{ articles }, categories, authors] = await Promise.all([
+    getArticles({ status: 'published' }),
+    getCategories(),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">

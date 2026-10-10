@@ -283,7 +283,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, categories }) => {
 
             {/* Dynamic category tabs */}
             {mainNav.map((cat) => {
-              const catUrl = `/${lang}/category/${cat.slug}`;
+              const catUrl = `/${lang}/category/${encodeURIComponent(cat.slug)}`;
               const isActive = pathname.startsWith(catUrl);
               return (
                 <li key={cat.id}>
@@ -462,7 +462,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, categories }) => {
               {categories.map((cat) => (
                 <Link
                   key={cat.id}
-                  href={`/${lang}/category/${cat.slug}`}
+                  href={`/${lang}/category/${encodeURIComponent(cat.slug)}`}
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-100"
                 >

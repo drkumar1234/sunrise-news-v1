@@ -1,10 +1,15 @@
+import { getSiteUrl } from '@/lib/site-url';
 import { NextResponse } from 'next/server';
-import { getArticles, getCategories } from '@/lib/db';
+import { getArticles, getCategories } from '@/lib/public-articles';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const baseUrl = 'https://sunrisenews.in';
-  const { articles } = getArticles({ status: 'published' });
-  const categories = getCategories();
+  const baseUrl = getSiteUrl();
+  const [{ articles }, categories] = await Promise.all([
+    getArticles({ status: 'published' }),
+    getCategories(),
+  ]);
 
   const staticRoutes = [
     '',
@@ -71,12 +76,12 @@ export async function GET() {
   // Category routes
   categories.forEach((cat) => {
     xml += `  <url>\n`;
-    xml += `    <loc>${baseUrl}/en/category/${cat.slug}</loc>\n`;
+    xml += `    <loc>${baseUrl}/en/category/${encodeURIComponent(cat.slug)}</loc>\n`;
     xml += `    <changefreq>hourly</changefreq>\n`;
     xml += `    <priority>0.9</priority>\n`;
     xml += `  </url>\n`;
     xml += `  <url>\n`;
-    xml += `    <loc>${baseUrl}/te/category/${cat.slug}</loc>\n`;
+    xml += `    <loc>${baseUrl}/te/category/${encodeURIComponent(cat.slug)}</loc>\n`;
     xml += `    <changefreq>hourly</changefreq>\n`;
     xml += `    <priority>0.9</priority>\n`;
     xml += `  </url>\n`;
@@ -85,7 +90,7 @@ export async function GET() {
   // Article routes
   articles.forEach((art) => {
     xml += `  <url>\n`;
-    xml += `    <loc>${baseUrl}/${art.language}/article/${art.slug}</loc>\n`;
+    xml += `    <loc>${baseUrl}/${art.language}/article/${encodeURIComponent(art.slug)}</loc>\n`;
     xml += `    <lastmod>${new Date(art.updatedAt).toISOString()}</lastmod>\n`;
     xml += `    <changefreq>never</changefreq>\n`;
     xml += `    <priority>0.9</priority>\n`;
@@ -97,7 +102,7 @@ export async function GET() {
   return new NextResponse(xml, {
     headers: {
       'Content-Type': 'application/xml',
-      'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+      'Cache-Control': 'public, max-age=0, must-revalidate',
     },
   });
 }

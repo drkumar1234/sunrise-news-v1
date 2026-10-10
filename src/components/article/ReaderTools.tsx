@@ -75,7 +75,7 @@ export const ReaderTools: React.FC<ReaderToolsProps> = ({
     if (onFontSizeChange) onFontSizeChange(size);
   };
 
-  const fullUrl = typeof window !== 'undefined' ? window.location.href : articleUrl;
+  const fullUrl = articleUrl;
   const encodedHeadline = encodeURIComponent(headline);
   const encodedUrl = encodeURIComponent(fullUrl);
 

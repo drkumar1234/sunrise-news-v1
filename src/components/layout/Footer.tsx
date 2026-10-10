@@ -16,11 +16,13 @@ export const Footer: React.FC<FooterProps> = ({ lang, categories, settings }) =>
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [subscribeError, setSubscribeError] = useState(false);
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) return;
     setLoading(true);
+    setSubscribeError(false);
     try {
       const res = await fetch('/api/newsletter', {
         method: 'POST',
@@ -30,9 +32,11 @@ export const Footer: React.FC<FooterProps> = ({ lang, categories, settings }) =>
       if (res.ok) {
         setSubscribed(true);
         setEmail('');
+      } else {
+        setSubscribeError(true);
       }
     } catch {
-      setSubscribed(true);
+      setSubscribeError(true);
     } finally {
       setLoading(false);
     }
@@ -61,7 +65,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, categories, settings }) =>
             {subscribed ? (
               <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-4 py-2 rounded-lg text-sm font-semibold">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isTelugu ? 'సభ్యత్వం నమోదైంది! ధన్యవాదాలు.' : 'Subscribed! Check your inbox.'}</span>
+                <span>{isTelugu ? 'సభ్యత్వం నమోదైంది! ధన్యవాదాలు.' : 'Subscription saved. Thank you!'}</span>
               </div>
             ) : (
               <>
@@ -83,6 +87,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, categories, settings }) =>
               </>
             )}
           </form>
+          {subscribeError && <p role="alert" className="text-sm text-red-200">{isTelugu ? 'సభ్యత్వం నమోదు కాలేదు. మళ్లీ ప్రయత్నించండి.' : 'Subscription could not be saved. Please try again.'}</p>}
         </div>
       </div>
 

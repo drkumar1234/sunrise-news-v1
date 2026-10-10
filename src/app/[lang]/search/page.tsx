@@ -1,20 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Filter, X, Sparkles, AlertCircle } from 'lucide-react';
-import { getCategories, getTags, getAuthors } from '@/lib/db';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Article, Language, Category, Tag, Author } from '@/types';
 
 import { Suspense } from 'react';
 
-function SearchContent({
-  params,
-}: {
-  params: { lang: string };
-}) {
+function SearchContent() {
+  const params = useParams<{ lang: string }>();
   const lang: Language = params.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
   const searchParams = useSearchParams();
@@ -35,17 +32,30 @@ function SearchContent({
   const [authors, setAuthors] = useState<Author[]>([]);
   const [results, setResults] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Load metadata and perform search
   useEffect(() => {
-    setCategories(getCategories());
-    setTags(getTags());
-    setAuthors(getAuthors());
+    const controller = new AbortController();
+    fetch('/api/catalog', { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Unable to load search filters.');
+        return response.json();
+      })
+      .then(data => {
+        setCategories(data.categories || []);
+        setTags(data.tags || []);
+        setAuthors(data.authors || []);
+      })
+      .catch(err => { if (err.name !== 'AbortError') setError('Search filters could not be loaded. Please refresh.'); });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchResults = async () => {
       setLoading(true);
+      setError('');
       try {
         const queryParams = new URLSearchParams();
         if (queryParam) queryParams.set('q', queryParam);
@@ -53,19 +63,22 @@ function SearchContent({
         if (tagParam) queryParams.set('tag', tagParam);
         if (authorParam) queryParams.set('author', authorParam);
 
-        const res = await fetch(`/api/search?${queryParams.toString()}`);
-        if (res.ok) {
-          const data = await res.json();
-          setResults(data.articles || []);
-        }
+        const res = await fetch(`/api/search?${queryParams.toString()}`, { signal: controller.signal, cache: 'no-store' });
+        if (!res.ok) throw new Error('Search unavailable');
+        const data = await res.json();
+        setResults(data.articles || []);
       } catch (err) {
-        console.error('Search error:', err);
+        if (!controller.signal.aborted) {
+          setError('Search is temporarily unavailable. Please try again.');
+          setResults([]);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     fetchResults();
+    return () => controller.abort();
   }, [queryParam, categoryParam, tagParam, authorParam]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -89,6 +102,7 @@ function SearchContent({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      {error && <p role="alert" className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{error}</p>}
       {/* Search Header Form */}
       <div className="bg-slate-50 p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm">
         <h1 className="text-2xl md:text-3xl font-black text-brand-navy mb-4">
@@ -234,10 +248,10 @@ function SearchContent({
   );
 }
 
-export default function SearchPage({ params }: { params: { lang: string } }) {
+export default function SearchPage() {
   return (
     <Suspense fallback={<div className="p-12 text-center text-xs text-slate-400">Loading Search Portal...</div>}>
-      <SearchContent params={params} />
+      <SearchContent />
     </Suspense>
   );
 }

@@ -1,18 +1,22 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { Camera, Eye, MapPin } from 'lucide-react';
-import { getArticles, getCategories } from '@/lib/db';
+import { getArticles, getCategories } from '@/lib/public-articles';
 import { Language } from '@/types';
 
-export default function PhotosPage({
+export const dynamic = 'force-dynamic';
+
+export default async function PhotosPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ status: 'published' });
+  const { articles } = await getArticles({ status: 'published' });
   const photoArticles = articles.filter(a => a.format === 'photo' || a.galleryImages);
 
   return (
@@ -44,7 +48,7 @@ export default function PhotosPage({
             >
               <div className="relative aspect-[4/3] overflow-hidden">
                 <img
-                  src={art.featuredImage}
+                  src={safeUrl(art.featuredImage, '/brand/sunrise-news-logo.jpg')}
                   alt={headline}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
@@ -60,7 +64,7 @@ export default function PhotosPage({
                     <MapPin className="w-3.5 h-3.5" />
                     <span>{art.location}</span>
                   </span>
-                  <Link href={`/${lang}/article/${art.slug}`}>
+                  <Link href={`/${lang}/article/${encodeURIComponent(art.slug)}`}>
                     <h2 className="text-lg font-bold text-white group-hover:text-amber-300 transition-colors leading-snug">
                       {headline}
                     </h2>
@@ -73,7 +77,7 @@ export default function PhotosPage({
                 <div className="pt-4 mt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
                   <span>Photo: {art.imageCredit}</span>
                   <Link
-                    href={`/${lang}/article/${art.slug}`}
+                    href={`/${lang}/article/${encodeURIComponent(art.slug)}`}
                     className="text-brand-orange font-semibold hover:underline"
                   >
                     {isTelugu ? 'గ్యాలరీ చూడండి' : 'Open Gallery'}

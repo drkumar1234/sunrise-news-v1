@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { BarChart3, PieChart, TrendingUp, Download, Share2 } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function InfographicsPage({
+export default async function InfographicsPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   const graphics = [

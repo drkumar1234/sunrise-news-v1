@@ -2,12 +2,13 @@ import React from 'react';
 import { Cookie, CheckCircle } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function CookiePolicyPage({
+export default async function CookiePolicyPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
   return (

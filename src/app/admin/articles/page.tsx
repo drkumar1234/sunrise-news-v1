@@ -7,7 +7,7 @@ import {
   Clock, Trash2, Edit3, Eye, AlertCircle 
 } from 'lucide-react';
 import { Article, Category } from '@/types';
-import { getCategories } from '@/lib/db';
+import { adminRequest, saveAdmin } from '@/lib/admin-client';
 
 export default function AdminArticlesListPage() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -16,29 +16,28 @@ export default function AdminArticlesListPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchArticles = async () => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams();
       params.set('status', statusFilter);
       if (categoryFilter) params.set('category', categoryFilter);
       if (search) params.set('q', search);
 
-      const res = await fetch(`/api/articles?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setArticles(data.articles || []);
-      }
+      const data = await adminRequest(`/api/articles?${params.toString()}`);
+      setArticles(data.articles || []);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Unable to load articles.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    setCategories(getCategories());
+    adminRequest('/api/catalog').then(data => setCategories(data.categories)).catch(error => setError(error.message));
   }, []);
 
   useEffect(() => {
@@ -47,30 +46,22 @@ export default function AdminArticlesListPage() {
 
   const handleStatusChange = async (articleId: string, newStatus: string) => {
     try {
-      const res = await fetch(`/api/articles/${articleId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) {
-        fetchArticles();
-      }
+      await saveAdmin(`/api/articles/${articleId}`, { status: newStatus });
+      await fetchArticles();
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Unable to update article.');
     }
   };
 
   const handleDelete = async (articleId: string) => {
     if (!confirm('Are you sure you want to permanently delete this article?')) return;
     try {
-      const res = await fetch(`/api/articles/${articleId}`, {
+      await adminRequest(`/api/articles/${articleId}`, {
         method: 'DELETE',
       });
-      if (res.ok) {
-        fetchArticles();
-      }
+      await fetchArticles();
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Unable to delete article.');
     }
   };
 
@@ -93,11 +84,12 @@ export default function AdminArticlesListPage() {
         </Link>
       </div>
 
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 w-full md:w-auto">
           {/* Status Tabs */}
-          {['all', 'published', 'review', 'draft'].map((st) => (
+          {['all', 'published', 'review', 'draft', 'approved', 'archived'].map((st) => (
             <button
               key={st}
               type="button"

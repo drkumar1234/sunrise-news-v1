@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Radio, Save, Check, AlertCircle } from 'lucide-react';
 import { EditorialSettings } from '@/types';
-import { getSettings } from '@/lib/db';
+import { adminRequest, saveAdmin } from '@/lib/admin-client';
 
 export default function AdminTickerPage() {
   const [settings, setSettings] = useState<EditorialSettings | null>(null);
@@ -12,38 +12,34 @@ export default function AdminTickerPage() {
   const [textTe, setTextTe] = useState('');
   const [url, setUrl] = useState('');
   const [toast, setToast] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const s = getSettings();
+    adminRequest('/api/settings').then(({ settings: s }) => {
     setSettings(s);
     setEnabled(s.breakingNewsEnabled);
     setTextEn(s.breakingNewsTextEn);
     setTextTe(s.breakingNewsTextTe);
     setUrl(s.breakingNewsUrl);
+    }).catch(error => setError(error.message));
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
+    setError('');
     try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await saveAdmin('/api/settings', {
           breakingNewsEnabled: enabled,
           breakingNewsTextEn: textEn,
           breakingNewsTextTe: textTe,
           breakingNewsUrl: url,
-        }),
       });
-
-      if (res.ok) {
         setToast('Breaking news ticker updated in real-time!');
         setTimeout(() => setToast(''), 3000);
-      }
-    } catch {
-      setToast('Saved successfully!');
-      setTimeout(() => setToast(''), 3000);
-    }
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to save ticker.'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -55,6 +51,7 @@ export default function AdminTickerPage() {
         </p>
       </div>
 
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
       {toast && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-600" />
@@ -125,7 +122,7 @@ export default function AdminTickerPage() {
         </div>
 
         <button
-          type="submit"
+          type="submit" disabled={saving || !settings}
           className="px-6 py-2.5 bg-brand-orange hover:bg-brand-orange-dark text-white rounded-xl text-xs font-bold transition-colors shadow flex items-center gap-2"
         >
           <Save className="w-4 h-4" />

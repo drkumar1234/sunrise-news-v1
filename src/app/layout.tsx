@@ -1,8 +1,9 @@
+import { getSiteUrl } from '@/lib/site-url';
 import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://sunrisenews.in'),
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: 'SUNRISE NEWS — Your World. Your News. Every Day.',
     template: '%s | SUNRISE NEWS',

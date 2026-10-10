@@ -71,6 +71,9 @@ export interface ArticleRevision {
   headline: string;
   summary: string;
   body: string;
+  headlineTe?: string;
+  summaryTe?: string;
+  bodyTe?: string;
   editorId: string;
   editorName: string;
   createdAt: string;

@@ -1,10 +1,18 @@
+import { getSiteUrl } from '@/lib/site-url';
 import { NextResponse } from 'next/server';
-import { getArticles } from '@/lib/db';
+import { getArticles } from '@/lib/public-articles';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const baseUrl = 'https://sunrisenews.in';
+  const baseUrl = getSiteUrl();
   // Google News requires published articles within the last 48 hours
-  const { articles } = getArticles({ status: 'published', limit: 50 });
+  const { articles: publishedArticles } = await getArticles({ status: 'published', limit: 1000 });
+  const now = Date.now();
+  const articles = publishedArticles.filter(article => {
+    const publishedAt = new Date(article.publishedAt).getTime();
+    return publishedAt <= now && publishedAt >= now - 48 * 60 * 60 * 1000;
+  });
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n`;
@@ -15,7 +23,7 @@ export async function GET() {
     const langCode = art.language;
 
     xml += `  <url>\n`;
-    xml += `    <loc>${baseUrl}/${art.language}/article/${art.slug}</loc>\n`;
+    xml += `    <loc>${baseUrl}/${art.language}/article/${encodeURIComponent(art.slug)}</loc>\n`;
     xml += `    <news:news>\n`;
     xml += `      <news:publication>\n`;
     xml += `        <news:name>Sunrise News</news:name>\n`;
@@ -32,7 +40,7 @@ export async function GET() {
   return new NextResponse(xml, {
     headers: {
       'Content-Type': 'application/xml',
-      'Cache-Control': 'public, max-age=1800, s-maxage=1800',
+      'Cache-Control': 'public, max-age=0, must-revalidate',
     },
   });
 }

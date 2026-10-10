@@ -2,31 +2,36 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChevronRight, Folder } from 'lucide-react';
-import { getCategoryBySlug, getCategories, getArticles, getAuthors } from '@/lib/db';
+import { getCategoryBySlug, getCategories, getArticles, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function CategoryPage({
+export const dynamic = 'force-dynamic';
+
+export default async function CategoryPage({
   params,
 }: {
-  params: { lang: string; slug: string };
+  params: Promise<{ lang: string; slug: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const category = getCategoryBySlug(params.slug);
+  const category = await getCategoryBySlug(resolvedParams.slug);
   if (!category) {
     notFound();
   }
 
-  const allCategories = getCategories();
-  const authors = getAuthors();
+  const [allCategories, authors] = await Promise.all([
+    getCategories(),
+    getAuthors(),
+  ]);
 
   // Child categories if any
   const childCategories = allCategories.filter(c => c.parentId === category.id);
 
   // Fetch articles for this category
-  const { articles, total } = getArticles({
+  const { articles, total } = await getArticles({
     categoryId: category.id,
     status: 'published',
   });
@@ -73,7 +78,7 @@ export default function CategoryPage({
           {childCategories.map((sub) => (
             <Link
               key={sub.id}
-              href={`/${lang}/category/${sub.slug}`}
+              href={`/${lang}/category/${encodeURIComponent(sub.slug)}`}
               className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-brand-orange hover:text-white text-slate-700 text-xs font-bold transition-colors whitespace-nowrap"
             >
               {isTelugu ? sub.nameTe : sub.nameEn}

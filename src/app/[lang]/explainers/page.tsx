@@ -1,22 +1,27 @@
 import React from 'react';
 import { HelpCircle, BookOpen } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function ExplainersPage({
+export const dynamic = 'force-dynamic';
+
+export default async function ExplainersPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ status: 'published' });
+  const { articles } = await getArticles({ status: 'published' });
   // Curated explainers like Amaravati, Polavaram, Economy
   const explainers = articles.filter(a => a.tags.includes('amaravati') || a.tags.includes('polavaram') || a.tags.includes('agriculture'));
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [categories, authors] = await Promise.all([
+    getCategories(),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">

@@ -1,38 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
 import path from 'path';
 import { generateSafeSlug } from '@/lib/db';
+import { requireAdmin, apiError } from '@/lib/auth';
+import { MAX_UPLOAD_BYTES, saveMedia, validateUpload } from '@/lib/media-store';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAdmin(request);
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (contentLength > MAX_UPLOAD_BYTES + 65536) return NextResponse.json({ error: 'Maximum upload size is 4 MB.' }, { status: 413 });
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
-    if (!file) {
+    if (!file || typeof file === 'string' || typeof file.arrayBuffer !== 'function') {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
+    if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: 'Maximum upload size is 4 MB.' }, { status: 413 });
     const buffer = Buffer.from(await file.arrayBuffer());
+    try { validateUpload(file.name, buffer); } catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
     const originalName = file.name;
     const extension = path.extname(originalName).toLowerCase();
     const baseName = path.basename(originalName, extension);
 
-    // Ensure uploads directory exists in public/uploads/documents
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    // Generate safe filename
-    const safeName = `${Date.now()}-${baseName.replace(/[^a-zA-Z0-9_\u0C00-\u0C7F-]/g, '_')}${extension}`;
-    const filePath = path.join(uploadsDir, safeName);
-    fs.writeFileSync(filePath, buffer);
-
-    const publicUrl = `/uploads/documents/${safeName}`;
+    const saved = await saveMedia(originalName, buffer);
+    const publicUrl = saved.url;
     const sizeInKb = (file.size / 1024).toFixed(1);
     const sizeStr = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${sizeInKb} KB`;
 
     let extractedText = '';
+    let extractionWarning: string | undefined;
 
     // 1. Process MS Word Document (.docx)
     if (extension === '.docx') {
@@ -42,18 +42,19 @@ export async function POST(request: NextRequest) {
         extractedText = result.value || '';
       } catch (docErr) {
         console.error('Error parsing docx:', docErr);
-        extractedText = `Document: ${originalName}\n(Could not automatically extract Word text. File is securely attached.)`;
+        extractionWarning = 'The file was saved, but its text could not be extracted. Enter article text manually.';
       }
     } 
     // 2. Process PDF Document (.pdf)
     else if (extension === '.pdf') {
       try {
-        const pdfParse = require('pdf-parse');
-        const pdfData = await pdfParse(buffer);
-        extractedText = pdfData.text || '';
+        const { PDFParse } = require('pdf-parse');
+        const parser = new PDFParse({ data: buffer });
+        try { const pdfData = await parser.getText(); extractedText = pdfData.text || ''; }
+        finally { await parser.destroy(); }
       } catch (pdfErr) {
         console.error('Error parsing PDF:', pdfErr);
-        extractedText = `Document: ${originalName}\n(Attached official PDF document.)`;
+        extractionWarning = 'The file was saved, but its text could not be extracted. Enter article text manually.';
       }
     } 
     // 3. Process Plain Text / Markdown (.txt, .rtf, .md)
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest) {
       suggestedSlug,
       detectedLocation,
       rawText: cleanExtractedText,
+      warning: extractionWarning,
       file: {
         name: originalName,
         url: publicUrl,
@@ -142,11 +144,7 @@ export async function POST(request: NextRequest) {
         type: extension === '.pdf' ? 'pdf' : extension === '.docx' || extension === '.doc' ? 'docx' : 'other',
       },
     });
-  } catch (error: any) {
-    console.error('Document upload error:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Failed to process document upload' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return apiError(error);
   }
 }

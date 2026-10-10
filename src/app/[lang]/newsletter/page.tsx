@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Mail, CheckCircle2, ShieldCheck, Send } from 'lucide-react';
 import { Language } from '@/types';
 
-export default function NewsletterPage({
-  params,
-}: {
-  params: { lang: string };
-}) {
+export default function NewsletterPage() {
+  const params = useParams<{ lang: string }>();
   const lang: Language = params.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
@@ -41,7 +39,7 @@ export default function NewsletterPage({
         setStatus('error');
       }
     } catch {
-      setStatus('success'); // graceful demonstration
+      setStatus('error');
     }
   };
 

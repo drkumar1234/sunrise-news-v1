@@ -1,19 +1,24 @@
 import React from 'react';
 import Link from 'next/link';
 import { Network, ExternalLink } from 'lucide-react';
-import { getCategories, getArticles } from '@/lib/db';
+import { getCategories, getArticles } from '@/lib/public-articles';
 import { Language } from '@/types';
 
-export default function HtmlSitemapPage({
+export const dynamic = 'force-dynamic';
+
+export default async function HtmlSitemapPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const categories = getCategories();
-  const { articles } = getArticles({ status: 'published' });
+  const [categories, { articles }] = await Promise.all([
+    getCategories(),
+    getArticles({ status: 'published' }),
+  ]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-12 space-y-8">
@@ -51,7 +56,7 @@ export default function HtmlSitemapPage({
           <ul className="space-y-1.5 text-slate-600">
             {categories.map((c) => (
               <li key={c.id}>
-                <Link href={`/${lang}/category/${c.slug}`} className="hover:text-brand-orange">
+                <Link href={`/${lang}/category/${encodeURIComponent(c.slug)}`} className="hover:text-brand-orange">
                   {isTelugu ? c.nameTe : c.nameEn}
                 </Link>
               </li>

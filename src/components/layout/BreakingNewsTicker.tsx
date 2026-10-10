@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Pause, Play, ChevronRight } from 'lucide-react';
 import { Language } from '@/types';
+import { safeUrl } from '@/lib/content-safety';
 
 interface BreakingNewsTickerProps {
   lang: Language;
@@ -45,7 +46,7 @@ export const BreakingNewsTicker: React.FC<BreakingNewsTickerProps> = ({
             onMouseLeave={() => setIsPaused(false)}
           >
             <Link
-              href={url}
+              href={safeUrl(url, `/${lang}/breaking`)}
               className="text-slate-200 hover:text-white font-medium hover:underline inline-flex items-center gap-1.5 transition-colors"
             >
               <span>{displayText}</span>

@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Download, Mail, CheckCircle2 } from 'lucide-react';
 import { NewsletterSubscriber } from '@/types';
-import { getSubscribers } from '@/lib/db';
+import { adminRequest } from '@/lib/admin-client';
 
 export default function AdminNewsletterPage() {
   const [subscribers, setSubscribers] = useState<NewsletterSubscriber[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setSubscribers(getSubscribers());
+    adminRequest('/api/newsletter').then(data => setSubscribers(data.subscribers)).catch(error => setError(error.message));
   }, []);
 
   const exportCSV = () => {
@@ -24,14 +25,16 @@ export default function AdminNewsletterPage() {
       ])
     ];
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(e => e.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const escapeCell = (value: string) => `"${(/^[=+@\-\t\r]/.test(value) ? "'" + value : value).replace(/"/g, '""')}"`;
+    const csvContent = rows.map(row => row.map(escapeCell).join(',')).join('\r\n');
+    const encodedUri = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
     link.setAttribute('download', `sunrise_newsletter_subscribers_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(encodedUri);
   };
 
   return (
@@ -40,7 +43,7 @@ export default function AdminNewsletterPage() {
         <div>
           <h1 className="text-2xl font-black text-slate-900">Newsletter Subscribers</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Manage subscriber database, edition preferences, and DPDP compliance consent records.
+            View saved subscription preferences and export your subscriber list.
           </p>
         </div>
 
@@ -54,10 +57,12 @@ export default function AdminNewsletterPage() {
         </button>
       </div>
 
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
+      <p className="text-sm text-slate-600">This CMS collects subscriptions. Sending newsletters requires a separate email service.</p>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between font-bold text-xs text-slate-600">
           <span>Registered Subscribers ({subscribers.length})</span>
-          <span className="text-emerald-700">100% DPDP Verified Opt-ins</span>
+          <span className="text-slate-500">Subscription preferences</span>
         </div>
 
         <div className="overflow-x-auto">

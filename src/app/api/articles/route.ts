@@ -1,54 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getArticles, createArticle } from '@/lib/db';
-
-export async function GET(request: NextRequest) {
+import { getArticles, createArticle, getCategories, getAuthors } from '@/lib/db';
+import { requireAdmin, getSession, json, apiError, ApiError } from '@/lib/auth';
+import { articleInput, readJson, STATUSES } from '@/lib/validation';
+import { publicArticle } from '@/lib/public-articles';
+import type { Article, ArticleStatus } from '@/types';
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const status = (searchParams.get('status') || 'published') as any;
-    const categorySlug = searchParams.get('category') || undefined;
-    const tagSlug = searchParams.get('tag') || undefined;
-    const authorId = searchParams.get('author') || undefined;
-    const format = searchParams.get('format') || undefined;
-    const search = searchParams.get('q') || undefined;
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
-
-    const result = getArticles({
-      status,
-      categorySlug,
-      tagSlug,
-      authorId,
-      format,
-      search,
-      limit,
-    });
-
-    // Strip internal notes if not admin requested
-    const cleanArticles = result.articles.map(art => {
-      if (status !== 'all') {
-        const { internalNotes, ...safeArt } = art;
-        return safeArt;
-      }
-      return art;
-    });
-
-    return NextResponse.json({
-      articles: cleanArticles,
-      total: result.total,
-    });
-  } catch (error) {
-    console.error('API Error /api/articles:', error);
-    return NextResponse.json({ error: 'Failed to fetch articles' }, { status: 500 });
-  }
+    const params = new URL(request.url).searchParams;
+    const status = params.get('status') || 'published';
+    if (status !== 'all' && !STATUSES.includes(status as ArticleStatus)) throw new ApiError(400, 'Invalid article status.');
+    const user = await getSession(request);
+    if (status !== 'published' && !user) throw new ApiError(401, 'Please sign in to the newsroom.');
+    const limit = Math.max(1, Math.min(Number(params.get('limit')) || (user ? 500 : 60), user ? 500 : 100));
+    const offset = Math.max(0, Math.min(Number(params.get('offset')) || 0, 100000));
+    const result = await getArticles({ status: status as ArticleStatus | 'all', categorySlug: params.get('category') || undefined, tagSlug: params.get('tag') || undefined, authorId: params.get('author') || undefined, format: params.get('format') || undefined, search: (params.get('q') || '').slice(0, 200), limit, offset });
+    return json({ articles: user ? result.articles : result.articles.map(publicArticle), total: result.total });
+  } catch (error) { return apiError(error); }
 }
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const defaultUser = { id: 'usr-admin', name: 'Editorial Desk' };
-    const created = createArticle(body, defaultUser);
-    return NextResponse.json({ article: created }, { status: 201 });
-  } catch (error) {
-    console.error('API Error POST /api/articles:', error);
-    return NextResponse.json({ error: 'Failed to create article' }, { status: 500 });
-  }
+    const user = await requireAdmin(request);
+    const input = articleInput(await readJson(request));
+    const [categories, authors] = await Promise.all([getCategories(), getAuthors()]);
+    if (!categories.some(c => c.id === input.categoryId) || !authors.some(a => a.id === input.authorId)) throw new ApiError(400, 'Select a valid category and author.');
+    const article = await createArticle(input as Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>, user);
+    return json({ article }, 201);
+  } catch (error) { return apiError(error); }
 }

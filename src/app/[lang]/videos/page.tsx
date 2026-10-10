@@ -1,24 +1,30 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import { Play, Video, Clock } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function VideosPage({
+export const dynamic = 'force-dynamic';
+
+export default async function VideosPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ status: 'published' });
+  const { articles } = await getArticles({ status: 'published' });
   // Include video format articles and lead video
   const videoArticles = articles.filter(a => a.format === 'video' || a.tags.includes('amaravati') || a.tags.includes('visakhapatnam'));
   const featuredVideo = videoArticles[0];
   const otherVideos = videoArticles.slice(1);
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [categories, authors] = await Promise.all([
+    getCategories(),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -43,13 +49,13 @@ export default function VideosPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-8 aspect-video rounded-xl overflow-hidden bg-black shadow-lg relative group">
               <img
-                src={featuredVideo.featuredImage}
+                src={safeUrl(featuredVideo.featuredImage, '/brand/sunrise-news-logo.jpg')}
                 alt={featuredVideo.headline}
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                 <a
-                  href={`/${lang}/article/${featuredVideo.slug}`}
+                  href={`/${lang}/article/${encodeURIComponent(featuredVideo.slug)}`}
                   className="w-16 h-16 rounded-full bg-brand-orange hover:bg-brand-orange-dark text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110"
                   aria-label="Play video"
                 >

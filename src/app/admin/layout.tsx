@@ -9,6 +9,7 @@ import {
   LogOut, ExternalLink, ShieldAlert, ShieldCheck, Menu, X 
 } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
+import { adminRequest } from '@/lib/admin-client';
 
 export default function AdminLayout({
   children,
@@ -19,36 +20,31 @@ export default function AdminLayout({
   const router = useRouter();
   const [user, setUser] = useState<{ id: string; role: string; name: string } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sessionError, setSessionError] = useState('');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('sr_user');
-      if (stored) {
-        try {
-          setUser(JSON.parse(stored));
-        } catch {
-          setUser({ id: 'usr-admin', role: 'super_admin', name: 'Ramesh Varma (Editor-in-Chief)' });
-        }
-      } else {
-        // Default demo session
-        const defaultUser = { id: 'usr-admin', role: 'super_admin', name: 'Ramesh Varma (Editor-in-Chief)' };
-        localStorage.setItem('sr_user', JSON.stringify(defaultUser));
-        setUser(defaultUser);
-      }
-    }
-  }, []);
+    if (pathname === '/admin/login') { setUser(null); return; }
+    let active = true;
+    adminRequest('/api/auth/session').then(data => { if (active) setUser(data.user); })
+      .catch(() => { if (active) { setUser(null); router.replace('/admin/login'); } });
+    return () => { active = false; };
+  }, [pathname, router]);
 
   // If on login page, render children directly without dashboard chrome
   if (pathname === '/admin/login') {
     return <>{children}</>;
   }
 
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('sr_user');
-      router.push('/admin/login');
-    }
+  const handleLogout = async () => {
+    try {
+      await adminRequest('/api/auth/logout', { method: 'POST' });
+      setUser(null);
+      router.replace('/admin/login');
+      router.refresh();
+    } catch (error) { setSessionError(error instanceof Error ? error.message : 'Sign out failed. Please retry.'); }
   };
+
+  if (!user) return <div className="min-h-screen flex items-center justify-center text-slate-600">Checking newsroom session…</div>;
 
   const navItems = [
     { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -60,6 +56,7 @@ export default function AdminLayout({
     { label: 'Ad Campaigns', href: '/admin/ads', icon: Megaphone },
     { label: 'Newsletter', href: '/admin/newsletter', icon: Users },
     { label: 'Audit Trail', href: '/admin/audit-logs', icon: HistoryIcon },
+    { label: 'Website Settings', href: '/admin/settings', icon: Settings },
   ];
 
   return (
@@ -176,6 +173,7 @@ export default function AdminLayout({
         </header>
 
         <main className="p-6 md:p-8 flex-1">
+          {sessionError && <p role="alert" className="mb-4 p-3 bg-red-50 text-red-800 rounded-lg">{sessionError}</p>}
           {children}
         </main>
       </div>

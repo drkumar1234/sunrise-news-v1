@@ -3,6 +3,7 @@
 import React from 'react';
 import { Quote, Info, FileText, Download } from 'lucide-react';
 import { Article, Language } from '@/types';
+import { formatInline, safeUrl, safeEmbedUrl } from '@/lib/content-safety';
 
 interface ArticleBodyProps {
   article: Article;
@@ -17,6 +18,8 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
 }) => {
   const isTelugu = lang === 'te';
   const bodyText = isTelugu && article.bodyTe ? article.bodyTe : article.body;
+  const mediaUrl = safeEmbedUrl(article.mediaUrl);
+  const documentUrl = safeUrl(article.attachedDocument?.url, '');
 
   // Font size classes
   const fontSizes = {
@@ -45,14 +48,6 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
         );
         currentBulletList = [];
       }
-    };
-
-    const formatInline = (text: string) => {
-      // Bold text **word**
-      return text
-        .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900">$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
-        .replace(/`(.*?)`/g, '<code class="bg-slate-100 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
     };
 
     lines.forEach((line, index) => {
@@ -139,13 +134,15 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
   return (
     <div className="article-body max-w-3xl">
       {/* Featured Video Embed if format is video */}
-      {article.format === 'video' && article.mediaUrl && (
+      {article.format === 'video' && mediaUrl && (
         <div className="my-6 aspect-video rounded-xl overflow-hidden bg-black shadow-lg">
           <iframe
-            src={article.mediaUrl}
+            src={mediaUrl}
             title={article.headline}
             className="w-full h-full"
             allowFullScreen
+            sandbox="allow-scripts allow-same-origin allow-presentation"
+            referrerPolicy="strict-origin-when-cross-origin"
           />
         </div>
       )}
@@ -164,7 +161,7 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {article.galleryImages.map((img, idx) => (
               <figure key={idx} className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-                <img src={img.url} alt={img.caption} className="w-full aspect-[4/3] object-cover" />
+                <img src={safeUrl(img.url, '/brand/sunrise-news-logo.jpg')} alt={img.caption} className="w-full aspect-[4/3] object-cover" />
                 <figcaption className="p-3 text-xs text-slate-600">
                   <p className="font-medium text-slate-900">{img.caption}</p>
                   <p className="text-slate-400 mt-0.5">Photo: {img.credit}</p>
@@ -176,7 +173,7 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
       )}
 
       {/* Official Attached Document (MS Word / PDF / Press Release) */}
-      {article.attachedDocument && (
+      {article.attachedDocument && documentUrl && (
         <div className="my-8 p-5 rounded-2xl bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200/80 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -197,7 +194,7 @@ export const ArticleBody: React.FC<ArticleBodyProps> = ({
             </div>
 
             <a
-              href={article.attachedDocument.url}
+              href={documentUrl}
               download={article.attachedDocument.name}
               target="_blank"
               rel="noopener noreferrer"

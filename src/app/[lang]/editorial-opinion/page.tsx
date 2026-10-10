@@ -1,19 +1,25 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { PenTool, Quote } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { Language } from '@/types';
 
-export default function EditorialOpinionPage({
+export const dynamic = 'force-dynamic';
+
+export default async function EditorialOpinionPage({
   params,
 }: {
-  params: { lang: string };
+  params: Promise<{ lang: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const { articles } = getArticles({ format: 'opinion', status: 'published' });
-  const authors = getAuthors();
+  const [{ articles }, authors] = await Promise.all([
+    getArticles({ format: 'opinion', status: 'published' }),
+    getAuthors(),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -45,7 +51,7 @@ export default function EditorialOpinionPage({
             >
               <div>
                 <Quote className="w-8 h-8 text-brand-orange/40 mb-3" />
-                <Link href={`/${lang}/article/${art.slug}`}>
+                <Link href={`/${lang}/article/${encodeURIComponent(art.slug)}`}>
                   <h2 className="text-xl font-bold font-serif text-slate-900 hover:text-brand-orange transition-colors leading-snug">
                     "{headline}"
                   </h2>
@@ -58,7 +64,7 @@ export default function EditorialOpinionPage({
               {author && (
                 <div className="flex items-center gap-3 mt-6 pt-4 border-t border-slate-200">
                   <img
-                    src={author.avatar}
+                    src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
                     alt={author.name}
                     className="w-12 h-12 rounded-full object-cover border border-slate-300"
                   />

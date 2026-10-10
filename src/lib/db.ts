@@ -1,14 +1,19 @@
-import { 
-  Article, Category, Tag, Author, AdPlacement, 
-  EditorialSettings, AuditLog, ArticleRevision, NewsletterSubscriber, 
-  Language, ArticleStatus 
+import 'server-only';
+import { randomUUID } from 'node:crypto';
+import { cache } from 'react';
+import type {
+  Article, Category, Tag, Author, AdPlacement, EditorialSettings, AuditLog,
+  ArticleRevision, NewsletterSubscriber, Language, ArticleStatus, UserRole,
 } from '@/types';
-import { 
-  initialArticles, initialCategories, initialTags, 
-  initialAuthors, initialAdPlacements, initialSettings, initialAuditLogs 
+import {
+  initialArticles, initialCategories, initialTags, initialAuthors,
+  initialAdPlacements, initialSettings, initialAuditLogs,
 } from './seed-data';
+import importedData from '../../data/sunrise_news.json';
+import { mutateJSON, readJSON } from './storage';
 
-interface DatabaseSchema {
+type StoredRevision = ArticleRevision & { headlineTe?: string; summaryTe?: string; bodyTe?: string };
+export interface DatabaseSchema {
   articles: Article[];
   categories: Category[];
   tags: Tag[];
@@ -16,122 +21,78 @@ interface DatabaseSchema {
   adPlacements: AdPlacement[];
   settings: EditorialSettings;
   auditLogs: AuditLog[];
-  revisions: ArticleRevision[];
+  revisions: StoredRevision[];
   subscribers: NewsletterSubscriber[];
 }
 
-function isServer(): boolean {
-  return typeof window === 'undefined';
+type Editor = { id: string; name: string; role?: UserRole };
+const STORE = 'sunrise-cms';
+const KEY = 'database-v1';
+const cleanText = (value: unknown): string => typeof value === 'string'
+  ? value.replace(/[\u200B-\u200D\uFEFF]/g, '').trim() : '';
+const text = (value: unknown): string => typeof value === 'string' ? value : '';
+const statuses: ArticleStatus[] = ['draft', 'review', 'approved', 'published', 'archived'];
+
+export class DatabaseValidationError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+    this.name = 'DatabaseValidationError';
+  }
 }
 
-function loadDatabase(): DatabaseSchema {
-  const defaultData: DatabaseSchema = {
-    articles: [...initialArticles],
-    categories: [...initialCategories],
-    tags: [...initialTags],
-    authors: [...initialAuthors],
-    adPlacements: [...initialAdPlacements],
-    settings: { ...initialSettings },
-    auditLogs: [...initialAuditLogs],
-    revisions: [],
-    subscribers: [
-      {
-        id: 'sub-1',
-        email: 'reader@example.com',
-        language: 'en',
-        editions: ['morning_briefing', 'ap_telangana'],
-        subscribedAt: '2026-09-20T10:00:00Z',
-        isActive: true,
-      }
-    ],
+function normalizeArticle(value: Article): Article {
+  return {
+    ...value,
+    id: text(value.id), slug: text(value.slug), headline: text(value.headline),
+    summary: text(value.summary), body: text(value.body),
+    categoryId: text(value.categoryId), authorId: text(value.authorId), location: text(value.location),
+    featuredImage: text(value.featuredImage), imageCaption: text(value.imageCaption), imageCredit: text(value.imageCredit),
+    language: value.language === 'te' ? 'te' : 'en',
+    status: statuses.includes(value.status) ? value.status : 'draft',
+    publishedAt: text(value.publishedAt), updatedAt: text(value.updatedAt),
+    tags: Array.isArray(value.tags) ? value.tags.filter(tag => typeof tag === 'string') : [],
+    readingTimeMinutes: value.readingTimeMinutes || 1,
   };
-
-  if (!isServer()) {
-    return defaultData;
-  }
-
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const dataDir = path.join(process.cwd(), 'data');
-    const dbFile = path.join(dataDir, 'sunrise_news.json');
-
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    // Ensure official brand logo is synchronized to public/brand
-    try {
-      const uploadedLogo = 'C:\\Users\\AI\\.gemini\\antigravity-ide\\brain\\90b3782b-9297-48d6-a30c-475e661af80d\\.user_uploaded\\media_1791269368090.jpg';
-      const publicBrandDir = path.join(process.cwd(), 'public', 'brand');
-      const publicLogoPath = path.join(publicBrandDir, 'sunrise-news-logo.jpg');
-      const rootLogoPath = path.join(process.cwd(), 'public', 'logo.png');
-      const rootLogoJpgPath = path.join(process.cwd(), 'public', 'logo.jpg');
-
-      if (fs.existsSync(uploadedLogo)) {
-        if (!fs.existsSync(publicBrandDir)) {
-          fs.mkdirSync(publicBrandDir, { recursive: true });
-        }
-        fs.copyFileSync(uploadedLogo, publicLogoPath);
-        fs.copyFileSync(uploadedLogo, rootLogoPath);
-        fs.copyFileSync(uploadedLogo, rootLogoJpgPath);
-      }
-    } catch (logoErr) {
-      // Ignore if source not present
-    }
-
-    if (!fs.existsSync(dbFile)) {
-      fs.writeFileSync(dbFile, JSON.stringify(defaultData, null, 2), 'utf8');
-      return defaultData;
-    }
-
-    const raw = fs.readFileSync(dbFile, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    return defaultData;
-  }
 }
 
-function saveDatabase(data: DatabaseSchema): void {
-  if (!isServer()) return;
-
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const dataDir = path.join(process.cwd(), 'data');
-    const dbFile = path.join(dataDir, 'sunrise_news.json');
-    const tempPath = `${dbFile}.tmp`;
-
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
-    fs.renameSync(tempPath, dbFile);
-  } catch (err) {
-    console.error('Error saving sunrise_news.json:', err);
-  }
+function normalizeDatabase(value: unknown): DatabaseSchema {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The stored newsroom database is not a JSON object.');
+  const db = value as Partial<DatabaseSchema>;
+  const array = <T,>(stored: T[] | undefined, defaults: T[]): T[] => {
+    if (stored === undefined) return structuredClone(defaults);
+    if (!Array.isArray(stored)) throw new Error('The stored newsroom database has an invalid collection.');
+    return stored;
+  };
+  return {
+    articles: array(db.articles, initialArticles).map(normalizeArticle),
+    categories: array(db.categories, initialCategories),
+    tags: array(db.tags, initialTags).map(tag => ({ ...tag, aliases: Array.isArray(tag.aliases) ? tag.aliases : [] })),
+    authors: array(db.authors, initialAuthors), adPlacements: array(db.adPlacements, initialAdPlacements),
+    settings: { ...initialSettings, ...db.settings }, auditLogs: array(db.auditLogs, initialAuditLogs),
+    revisions: array(db.revisions, []), subscribers: array(db.subscribers, []),
+  };
 }
 
-// Memory cache with file backup for speed
-let dbCache: DatabaseSchema | null = null;
+// Bundle the tracked snapshot into the server function as the migration source.
+const seedDatabase = (): DatabaseSchema => normalizeDatabase(structuredClone(importedData));
 
-function getDB(): DatabaseSchema {
-  if (!dbCache) {
-    dbCache = loadDatabase();
-  }
-  return dbCache;
+// React memoization is scoped to a server render/request, never a global data
+// cache. Route handlers (including mutations) read storage afresh on each call.
+const loadDB = async (): Promise<DatabaseSchema> =>
+  normalizeDatabase(await readJSON<DatabaseSchema>(STORE, KEY, seedDatabase));
+// React 18 exposes cache through Next's server component runtime, while its
+// ordinary Node/route-handler entry does not. Both execution paths stay valid.
+const getDB = typeof cache === 'function' ? cache(loadDB) : loadDB;
+
+async function changeDB<R>(change: (db: DatabaseSchema) => R): Promise<R> {
+  return mutateJSON<DatabaseSchema, R>(STORE, KEY, seedDatabase, stored => {
+    Object.assign(stored, normalizeDatabase(stored));
+    return change(stored);
+  });
 }
 
-function persistDB(): void {
-  if (dbCache) {
-    saveDatabase(dbCache);
-  }
-}
-
-/* ==========================================================================
-   Article Queries and Mutations
-   ========================================================================== */
+/** Server-only snapshot for authenticated administrative exports. */
+export async function getAllData(): Promise<DatabaseSchema> { return getDB(); }
 
 export interface GetArticlesOptions {
   language?: Language;
@@ -151,494 +112,249 @@ export interface GetArticlesOptions {
   offset?: number;
 }
 
-export function getArticles(options: GetArticlesOptions = {}): { articles: Article[]; total: number } {
-  const db = getDB();
-  let list = [...db.articles];
+function canonicalTag(tags: Tag[], input: string): string {
+  const clean = input.toLowerCase().trim();
+  const found = tags.find(tag => tag.slug.toLowerCase() === clean || tag.aliases.some(alias => alias.toLowerCase() === clean));
+  return found?.canonicalSlug || found?.slug || clean;
+}
 
-  // Exclude draft/review unless specifically requested
-  if (!options.status || options.status !== 'all') {
-    const targetStatus = options.status || 'published';
-    list = list.filter(a => a.status === targetStatus);
-  }
-
-  // Category filter
+export async function getArticles(options: GetArticlesOptions = {}): Promise<{ articles: Article[]; total: number }> {
+  const db = await getDB();
+  let list = db.articles;
+  if (options.status !== 'all') list = list.filter(article => article.status === (options.status || 'published'));
   if (options.categorySlug) {
-    const cat = db.categories.find(c => c.slug === options.categorySlug);
-    if (cat) {
-      list = list.filter(a => a.categoryId === cat.id || a.subcategoryId === cat.id);
-    }
+    const category = db.categories.find(item => item.slug === options.categorySlug);
+    list = category ? list.filter(article => article.categoryId === category.id || article.subcategoryId === category.id) : [];
   } else if (options.categoryId) {
-    list = list.filter(a => a.categoryId === options.categoryId || a.subcategoryId === options.categoryId);
+    list = list.filter(article => article.categoryId === options.categoryId || article.subcategoryId === options.categoryId);
   }
-
-  // Tag filter with canonical resolution
   if (options.tagSlug) {
-    const canonical = resolveCanonicalTag(options.tagSlug);
-    list = list.filter(a => a.tags.includes(canonical));
+    const canonical = canonicalTag(db.tags, options.tagSlug);
+    list = list.filter(article => article.tags.some(tag => canonicalTag(db.tags, tag) === canonical));
   }
-
-  // Author filter
-  if (options.authorId) {
-    list = list.filter(a => a.authorId === options.authorId);
+  if (options.authorId) list = list.filter(article => article.authorId === options.authorId);
+  for (const flag of ['isLeadStory', 'isBreaking', 'isTrending', 'isEditorPick'] as const) {
+    if (options[flag] !== undefined) list = list.filter(article => !!article[flag] === options[flag]);
   }
-
-  // Flags
-  if (options.isLeadStory !== undefined) {
-    list = list.filter(a => !!a.isLeadStory === options.isLeadStory);
+  if (options.format) list = list.filter(article => article.format === options.format);
+  if (options.location) {
+    const location = options.location.toLowerCase().trim();
+    list = list.filter(article => article.location.toLowerCase().includes(location) || text(article.locationTe).toLowerCase().includes(location));
   }
-  if (options.isBreaking !== undefined) {
-    list = list.filter(a => !!a.isBreaking === options.isBreaking);
+  // Both translations belong to one article and remain available in both editions.
+  if (options.search?.trim()) {
+    const query = options.search.toLowerCase().trim();
+    list = list.filter(article => [article.headline, article.summary, article.body, article.location,
+      article.headlineTe, article.summaryTe, article.bodyTe, article.locationTe]
+      .some(value => text(value).toLowerCase().includes(query)));
   }
-  if (options.isTrending !== undefined) {
-    list = list.filter(a => !!a.isTrending === options.isTrending);
-  }
-  if (options.isEditorPick !== undefined) {
-    list = list.filter(a => !!a.isEditorPick === options.isEditorPick);
-  }
-  if (options.format) {
-    list = list.filter(a => a.format === options.format);
-  }
-
-  // Search filter
-  if (options.search && options.search.trim()) {
-    const q = options.search.trim().toLowerCase();
-    list = list.filter(a => {
-      const matchEn = a.headline.toLowerCase().includes(q) || 
-                      a.summary.toLowerCase().includes(q) || 
-                      a.body.toLowerCase().includes(q) ||
-                      a.location.toLowerCase().includes(q);
-      const matchTe = (a.headlineTe && a.headlineTe.toLowerCase().includes(q)) ||
-                      (a.summaryTe && a.summaryTe.toLowerCase().includes(q)) ||
-                      (a.bodyTe && a.bodyTe.toLowerCase().includes(q)) ||
-                      (a.locationTe && a.locationTe.toLowerCase().includes(q));
-      return matchEn || matchTe;
-    });
-  }
-
-  // Sort by publishedAt desc
-  list.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-
+  list = [...list].sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0));
   const total = list.length;
-  const offset = options.offset || 0;
-  const limit = options.limit || list.length;
-  const paginated = list.slice(offset, offset + limit);
-
-  return { articles: paginated, total };
+  const offset = Math.max(0, options.offset || 0);
+  const limit = options.limit === undefined ? total : Math.max(0, options.limit);
+  return { articles: list.slice(offset, offset + limit), total };
 }
 
-export function generateSafeSlug(text: string, fallbackPrefix: string = 'story'): string {
-  if (!text) return `${fallbackPrefix}-${Date.now().toString(36)}`;
-
-  // Strip zero-width chars and trim
-  const clean = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  if (!clean) return `${fallbackPrefix}-${Date.now().toString(36)}`;
-
-  // 1. If English words exist, create clean kebab-case slug
-  const english = clean
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  if (english.length >= 3) {
-    return english.slice(0, 80);
-  }
-
-  // 2. Unicode slug preserving English and Telugu characters (\u0C00-\u0C7F)
-  const unicodeSlug = clean
-    .replace(/[^a-zA-Z0-9\u0C00-\u0C7F\s_-]/g, '')
-    .trim()
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-
-  if (unicodeSlug.length > 0) {
-    return unicodeSlug;
-  }
-
-  return `${fallbackPrefix}-${Date.now().toString(36)}`;
+export function generateSafeSlug(value: string, fallbackPrefix = 'story'): string {
+  const clean = cleanText(value).normalize('NFKC');
+  const english = clean.toLowerCase().replace(/[^\w\s-]/g, '').trim()
+    .replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+  if (english.length >= 3) return english.slice(0, 80).replace(/-+$/g, '');
+  const unicode = clean.toLowerCase().replace(/[^a-z0-9\u0C00-\u0C7F\s_-]/g, '').trim()
+    .replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '');
+  return unicode || `${fallbackPrefix}-${randomUUID()}`;
 }
 
-export function getArticleBySlug(slug: string): Article | undefined {
+const slugKey = (slug: string) => slug.normalize('NFKC').trim().toLowerCase();
+function checkSlug<T extends { id: string; slug: string }>(items: T[], slug: string, excludeId?: string): void {
+  if (items.some(item => item.id !== excludeId && slugKey(item.slug) === slugKey(slug))) {
+    throw new DatabaseValidationError('That URL slug is already in use. Choose a different slug.', 409);
+  }
+}
+
+export async function getArticleBySlug(slug: string): Promise<Article | undefined> {
   if (!slug) return undefined;
-  const db = getDB();
-
   let decoded = slug;
-  try {
-    decoded = decodeURIComponent(slug);
-  } catch {}
-
-  const target = slug.trim();
-  const targetDecoded = decoded.trim();
-
-  return db.articles.find(a => {
-    if (!a.slug && !a.id) return false;
-    const s = (a.slug || '').trim();
-    if (s && (s === target || s === targetDecoded || s.toLowerCase() === target.toLowerCase() || s.toLowerCase() === targetDecoded.toLowerCase())) {
-      return true;
-    }
-    // Also match by ID if slug not found
-    if (a.id === target || a.id === targetDecoded) {
-      return true;
-    }
-    return false;
-  });
+  try { decoded = decodeURIComponent(slug); } catch { /* Keep malformed input as literal text. */ }
+  const targets = [slugKey(slug), slugKey(decoded)];
+  return (await getDB()).articles.find(article => targets.includes(slugKey(article.slug)) || targets.includes(article.id));
 }
 
-export function getArticleById(id: string): Article | undefined {
-  const db = getDB();
-  return db.articles.find(a => a.id === id);
+export async function getArticleById(id: string): Promise<Article | undefined> {
+  return (await getDB()).articles.find(article => article.id === id);
 }
 
-export function createArticle(articleData: Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>, user: { id: string; name: string }): Article {
-  const db = getDB();
-  const id = `art-${Date.now()}`;
-  const now = new Date().toISOString();
-  
-  // Clean zero-width chars and ensure valid strings
-  let cleanHeadline = (articleData.headline || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  let cleanHeadlineTe = (articleData.headlineTe || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  let cleanSummary = (articleData.summary || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  let cleanSummaryTe = (articleData.summaryTe || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+function readingTime(article: Pick<Article, 'body' | 'bodyTe'>): number {
+  const count = `${article.body || ''} ${article.bodyTe || ''}`.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(count / 200));
+}
 
-  if (!cleanHeadline && cleanHeadlineTe) cleanHeadline = cleanHeadlineTe;
-  if (!cleanHeadlineTe && cleanHeadline) cleanHeadlineTe = cleanHeadline;
-  if (!cleanHeadline && !cleanHeadlineTe) {
-    cleanHeadline = 'Breaking News Story';
-    cleanHeadlineTe = 'తాజా వార్త';
-  }
-
-  if (!cleanSummary && cleanSummaryTe) cleanSummary = cleanSummaryTe;
-  if (!cleanSummaryTe && cleanSummary) cleanSummaryTe = cleanSummary;
-
-  let cleanSlug = (articleData.slug || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  if (!cleanSlug) {
-    cleanSlug = generateSafeSlug(cleanHeadline || cleanHeadlineTe);
-  }
-
-  // Word count estimate reading time
-  const words = ((articleData.body || '') + ' ' + (articleData.bodyTe || '')).split(/\s+/).length;
-  const readingTime = Math.max(1, Math.ceil(words / 200));
-
-  const newArticle: Article = {
-    ...articleData,
-    id,
-    headline: cleanHeadline,
-    headlineTe: cleanHeadlineTe,
-    summary: cleanSummary,
-    summaryTe: cleanSummaryTe,
-    slug: cleanSlug,
-    publishedAt: articleData.status === 'published' ? now : (now),
-    updatedAt: now,
-    readingTimeMinutes: readingTime,
-  };
-
-  db.articles.unshift(newArticle);
-
-  // Add audit log
+function audit(db: DatabaseSchema, user: Editor, action: AuditLog['action'], targetType: AuditLog['targetType'], targetId: string, targetTitle: string, details?: string): void {
   db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    userId: user.id,
-    userName: user.name,
-    userRole: 'editor',
-    action: 'create',
-    targetType: 'article',
-    targetId: id,
-    targetTitle: newArticle.headline,
-    timestamp: now,
-    details: `Article created with status: ${newArticle.status}`,
+    id: `log-${randomUUID()}`, userId: user.id, userName: user.name, userRole: user.role || 'editor',
+    action, targetType, targetId, targetTitle, timestamp: new Date().toISOString(), details,
   });
-
-  persistDB();
-  return newArticle;
 }
 
-export function updateArticle(
-  id: string, 
-  updates: Partial<Article>, 
-  user: { id: string; name: string },
-  changeNote?: string
-): Article | null {
-  const db = getDB();
-  const index = db.articles.findIndex(a => a.id === id);
-  if (index === -1) return null;
+export async function createArticle(
+  articleData: Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>,
+  user: Editor,
+): Promise<Article> {
+  const now = new Date().toISOString();
+  const headline = cleanText(articleData.headline) || cleanText(articleData.headlineTe);
+  if (!headline) throw new DatabaseValidationError('An article headline is required.');
+  if (!statuses.includes(articleData.status)) throw new DatabaseValidationError('Invalid article status.');
+  const article = normalizeArticle({
+    ...articleData,
+    id: `art-${randomUUID()}`, headline, headlineTe: cleanText(articleData.headlineTe) || headline,
+    summary: cleanText(articleData.summary) || cleanText(articleData.summaryTe),
+    summaryTe: cleanText(articleData.summaryTe) || cleanText(articleData.summary),
+    slug: generateSafeSlug(cleanText(articleData.slug) || headline),
+    publishedAt: now, updatedAt: now, readingTimeMinutes: readingTime(articleData),
+  });
+  return changeDB(db => {
+    checkSlug(db.articles, article.slug);
+    db.articles.unshift(article);
+    audit(db, user, 'create', 'article', article.id, article.headline, `Article created with status: ${article.status}`);
+    return article;
+  });
+}
 
+function applyArticleUpdate(db: DatabaseSchema, id: string, updates: Partial<Article>, user: Editor, changeNote?: string): Article | null {
+  const index = db.articles.findIndex(article => article.id === id);
+  if (index === -1) return null;
+  if (updates.status !== undefined && !statuses.includes(updates.status)) throw new DatabaseValidationError('Invalid article status.');
   const current = db.articles[index];
   const now = new Date().toISOString();
-
-  // Save current version as a revision
-  const versionNum = (db.revisions.filter(r => r.articleId === id).length) + 1;
-  const revision: ArticleRevision = {
-    id: `rev-${id}-${versionNum}-${Date.now()}`,
-    articleId: id,
-    version: versionNum,
-    headline: current.headline,
-    summary: current.summary,
-    body: current.body,
-    editorId: user.id,
-    editorName: user.name,
-    createdAt: now,
-    changeNote: changeNote || 'Article updated',
-  };
-  db.revisions.unshift(revision);
-
-  // Apply updates
-  let cleanSlug = updates.slug !== undefined
-    ? updates.slug.replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
-    : current.slug;
-  if (!cleanSlug) {
-    cleanSlug = generateSafeSlug(updates.headline || current.headline || updates.headlineTe || current.headlineTe || '');
-  }
-
-  const updated: Article = {
-    ...current,
-    ...updates,
-    slug: cleanSlug,
-    id: current.id,
+  const updated = normalizeArticle({
+    ...current, ...updates, id: current.id,
+    slug: updates.slug === undefined ? current.slug : generateSafeSlug(cleanText(updates.slug) || updates.headline || current.headline),
     updatedAt: now,
-  };
-
-  db.articles[index] = updated;
-
-  // Add audit log
-  db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    userId: user.id,
-    userName: user.name,
-    userRole: 'editor',
-    action: 'update',
-    targetType: 'article',
-    targetId: id,
-    targetTitle: updated.headline,
-    timestamp: now,
-    details: changeNote || `Updated article (Version ${versionNum})`,
+    publishedAt: current.status !== 'published' && updates.status === 'published' ? now : current.publishedAt,
   });
-
-  persistDB();
+  if (!cleanText(updated.headline) && !cleanText(updated.headlineTe)) throw new DatabaseValidationError('An article headline is required.');
+  updated.readingTimeMinutes = readingTime(updated);
+  checkSlug(db.articles, updated.slug, id);
+  const version = Math.max(0, ...db.revisions.filter(revision => revision.articleId === id).map(revision => revision.version)) + 1;
+  db.revisions.unshift({
+    id: `rev-${randomUUID()}`, articleId: id, version,
+    headline: current.headline, headlineTe: text(current.headlineTe),
+    summary: current.summary, summaryTe: text(current.summaryTe), body: current.body, bodyTe: text(current.bodyTe),
+    editorId: user.id, editorName: user.name, createdAt: now, changeNote: changeNote || 'Article updated',
+  });
+  db.articles[index] = updated;
+  audit(db, user, 'update', 'article', id, updated.headline, changeNote || `Updated article (Version ${version})`);
   return updated;
 }
 
-export function deleteArticle(id: string, user: { id: string; name: string }): boolean {
-  const db = getDB();
-  const index = db.articles.findIndex(a => a.id === id);
-  if (index === -1) return false;
+export async function updateArticle(id: string, updates: Partial<Article>, user: Editor, changeNote?: string): Promise<Article | null> {
+  return changeDB(db => applyArticleUpdate(db, id, updates, user, changeNote));
+}
 
-  const deleted = db.articles.splice(index, 1)[0];
-
-  db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    userId: user.id,
-    userName: user.name,
-    userRole: 'super_admin',
-    action: 'delete',
-    targetType: 'article',
-    targetId: id,
-    targetTitle: deleted.headline,
-    timestamp: new Date().toISOString(),
+export async function deleteArticle(id: string, user: Editor): Promise<boolean> {
+  return changeDB(db => {
+    const index = db.articles.findIndex(article => article.id === id);
+    if (index === -1) return false;
+    const [deleted] = db.articles.splice(index, 1);
+    db.revisions = db.revisions.filter(revision => revision.articleId !== id);
+    audit(db, user, 'delete', 'article', id, deleted.headline);
+    return true;
   });
-
-  persistDB();
-  return true;
 }
 
-export function getArticleRevisions(articleId: string): ArticleRevision[] {
-  const db = getDB();
-  return db.revisions.filter(r => r.articleId === articleId).sort((a, b) => b.version - a.version);
+export async function getArticleRevisions(articleId: string): Promise<StoredRevision[]> {
+  return (await getDB()).revisions.filter(revision => revision.articleId === articleId).sort((a, b) => b.version - a.version);
 }
 
-export function restoreRevision(articleId: string, revisionId: string, user: { id: string; name: string }): Article | null {
-  const db = getDB();
-  const revision = db.revisions.find(r => r.id === revisionId && r.articleId === articleId);
-  if (!revision) return null;
-
-  return updateArticle(
-    articleId, 
-    {
-      headline: revision.headline,
-      summary: revision.summary,
-      body: revision.body,
-    }, 
-    user, 
-    `Restored to Version ${revision.version}`
-  );
-}
-
-/* ==========================================================================
-   Categories
-   ========================================================================== */
-
-export function getCategories(): Category[] {
-  const db = getDB();
-  return [...db.categories].sort((a, b) => a.displayOrder - b.displayOrder);
-}
-
-export function getCategoryBySlug(slug: string): Category | undefined {
-  const db = getDB();
-  return db.categories.find(c => c.slug === slug);
-}
-
-export function saveCategory(category: Category, user: { id: string; name: string }): Category {
-  const db = getDB();
-  const index = db.categories.findIndex(c => c.id === category.id);
-  if (index >= 0) {
-    db.categories[index] = category;
-  } else {
-    db.categories.push(category);
-  }
-
-  persistDB();
-  return category;
-}
-
-/* ==========================================================================
-   Tags and Canonical Aliases
-   ========================================================================== */
-
-export function getTags(): Tag[] {
-  const db = getDB();
-  return db.tags;
-}
-
-export function resolveCanonicalTag(inputTag: string): string {
-  const db = getDB();
-  const clean = inputTag.toLowerCase().trim();
-
-  // Check direct slug match
-  const direct = db.tags.find(t => t.slug === clean);
-  if (direct) return direct.slug;
-
-  // Check alias mappings (e.g. 'vizag' -> 'visakhapatnam')
-  for (const tag of db.tags) {
-    if (tag.aliases && tag.aliases.map(a => a.toLowerCase()).includes(clean)) {
-      return tag.slug;
-    }
-  }
-
-  return clean;
-}
-
-export function saveTag(tag: Tag, user: { id: string; name: string }): Tag {
-  const db = getDB();
-  const index = db.tags.findIndex(t => t.id === tag.id);
-  if (index >= 0) {
-    db.tags[index] = tag;
-  } else {
-    db.tags.push(tag);
-  }
-
-  persistDB();
-  return tag;
-}
-
-/* ==========================================================================
-   Authors
-   ========================================================================== */
-
-export function getAuthors(): Author[] {
-  const db = getDB();
-  return db.authors;
-}
-
-export function getAuthorById(id: string): Author | undefined {
-  const db = getDB();
-  return db.authors.find(a => a.id === id);
-}
-
-export function getAuthorBySlug(slug: string): Author | undefined {
-  const db = getDB();
-  return db.authors.find(a => a.slug === slug);
-}
-
-/* ==========================================================================
-   Editorial Settings
-   ========================================================================== */
-
-export function getSettings(): EditorialSettings {
-  const db = getDB();
-  return db.settings;
-}
-
-export function updateSettings(updates: Partial<EditorialSettings>, user: { id: string; name: string }): EditorialSettings {
-  const db = getDB();
-  db.settings = { ...db.settings, ...updates };
-  persistDB();
-  return db.settings;
-}
-
-/* ==========================================================================
-   Advertisements
-   ========================================================================== */
-
-export function getAdPlacements(): AdPlacement[] {
-  const db = getDB();
-  return db.adPlacements;
-}
-
-export function getActiveAd(slotKey: 'leaderboard' | 'sidebar' | 'mid_content' | 'footer'): AdPlacement | undefined {
-  const db = getDB();
-  const today = new Date().toISOString().split('T')[0];
-  return db.adPlacements.find(
-    ad => ad.slotKey === slotKey && ad.isActive && ad.startDate <= today && ad.endDate >= today
-  );
-}
-
-export function saveAdPlacement(ad: AdPlacement): AdPlacement {
-  const db = getDB();
-  const index = db.adPlacements.findIndex(a => a.id === ad.id);
-  if (index >= 0) {
-    db.adPlacements[index] = ad;
-  } else {
-    db.adPlacements.push(ad);
-  }
-  persistDB();
-  return ad;
-}
-
-/* ==========================================================================
-   Newsletter Subscribers
-   ========================================================================== */
-
-export function getSubscribers(): NewsletterSubscriber[] {
-  const db = getDB();
-  return db.subscribers || [];
-}
-
-export function addSubscriber(
-  email: string, 
-  language: Language = 'en', 
-  editions: ('morning_briefing' | 'ap_telangana' | 'sunday_special')[] = ['morning_briefing']
-): { success: boolean; message: string } {
-  const db = getDB();
-  if (!db.subscribers) db.subscribers = [];
-
-  const existing = db.subscribers.find(s => s.email.toLowerCase() === email.toLowerCase());
-  if (existing) {
-    existing.isActive = true;
-    existing.editions = editions;
-    existing.language = language;
-    persistDB();
-    return { success: true, message: 'Subscription preferences updated!' };
-  }
-
-  db.subscribers.push({
-    id: `sub-${Date.now()}`,
-    email: email.trim().toLowerCase(),
-    language,
-    editions,
-    subscribedAt: new Date().toISOString(),
-    isActive: true,
+export async function restoreRevision(articleId: string, revisionId: string, user: Editor): Promise<Article | null> {
+  return changeDB(db => {
+    const revision = db.revisions.find(item => item.id === revisionId && item.articleId === articleId);
+    if (!revision) return null;
+    const updates: Partial<Article> = { headline: revision.headline, summary: revision.summary, body: revision.body };
+    // Old revisions contain only English; do not erase current Telugu content.
+    if (Object.prototype.hasOwnProperty.call(revision, 'headlineTe')) updates.headlineTe = revision.headlineTe;
+    if (Object.prototype.hasOwnProperty.call(revision, 'summaryTe')) updates.summaryTe = revision.summaryTe;
+    if (Object.prototype.hasOwnProperty.call(revision, 'bodyTe')) updates.bodyTe = revision.bodyTe;
+    return applyArticleUpdate(db, articleId, updates, user, `Restored to Version ${revision.version}`);
   });
-
-  persistDB();
-  return { success: true, message: 'Thank you for subscribing to Sunrise News!' };
 }
 
-/* ==========================================================================
-   Audit Logs
-   ========================================================================== */
-
-export function getAuditLogs(): AuditLog[] {
-  const db = getDB();
-  return db.auditLogs || [];
+export async function getCategories(): Promise<Category[]> {
+  return [...(await getDB()).categories].sort((a, b) => a.displayOrder - b.displayOrder);
 }
+export async function getCategoryBySlug(slug: string): Promise<Category | undefined> {
+  return (await getDB()).categories.find(category => category.slug === slug);
+}
+export async function saveCategory(category: Category, user: Editor): Promise<Category> {
+  const saved = { ...category, id: category.id || `cat-${randomUUID()}`, slug: generateSafeSlug(category.slug || category.nameEn || category.nameTe, 'category') };
+  return changeDB(db => {
+    checkSlug(db.categories, saved.slug, saved.id);
+    const index = db.categories.findIndex(item => item.id === saved.id);
+    if (index >= 0) db.categories[index] = saved;
+    else db.categories.push(saved);
+    audit(db, user, index >= 0 ? 'update' : 'create', 'category', saved.id, saved.nameEn);
+    return saved;
+  });
+}
+
+export async function getTags(): Promise<Tag[]> { return (await getDB()).tags; }
+export async function resolveCanonicalTag(inputTag: string): Promise<string> {
+  return canonicalTag((await getDB()).tags, inputTag);
+}
+export async function saveTag(tag: Tag, user: Editor): Promise<Tag> {
+  const saved = {
+    ...tag, id: tag.id || `tag-${randomUUID()}`, slug: generateSafeSlug(tag.slug || tag.nameEn || tag.nameTe, 'tag'),
+    aliases: Array.isArray(tag.aliases) ? tag.aliases.map(alias => alias.toLowerCase().trim()).filter(Boolean) : [],
+  };
+  return changeDB(db => {
+    checkSlug(db.tags, saved.slug, saved.id);
+    const index = db.tags.findIndex(item => item.id === saved.id);
+    if (index >= 0) db.tags[index] = saved;
+    else db.tags.push(saved);
+    audit(db, user, index >= 0 ? 'update' : 'create', 'tag', saved.id, saved.nameEn);
+    return saved;
+  });
+}
+
+export async function getAuthors(): Promise<Author[]> { return (await getDB()).authors; }
+export async function getAuthorById(id: string): Promise<Author | undefined> { return (await getDB()).authors.find(author => author.id === id); }
+export async function getAuthorBySlug(slug: string): Promise<Author | undefined> { return (await getDB()).authors.find(author => author.slug === slug); }
+export async function getSettings(): Promise<EditorialSettings> { return (await getDB()).settings; }
+export async function updateSettings(updates: Partial<EditorialSettings>, user: Editor): Promise<EditorialSettings> {
+  return changeDB(db => {
+    db.settings = { ...db.settings, ...updates };
+    audit(db, user, 'update', 'settings', 'editorial', db.settings.siteNameEn);
+    return db.settings;
+  });
+}
+
+export async function getAdPlacements(): Promise<AdPlacement[]> { return (await getDB()).adPlacements; }
+export async function getActiveAd(slotKey: AdPlacement['slotKey']): Promise<AdPlacement | undefined> {
+  const today = new Date().toISOString().slice(0, 10);
+  return (await getDB()).adPlacements.find(ad => ad.slotKey === slotKey && ad.isActive && ad.startDate <= today && ad.endDate >= today);
+}
+export async function saveAdPlacement(ad: AdPlacement, user?: Editor): Promise<AdPlacement> {
+  const saved = { ...ad, id: ad.id || `ad-${randomUUID()}` };
+  return changeDB(db => {
+    const index = db.adPlacements.findIndex(item => item.id === saved.id);
+    if (index >= 0) db.adPlacements[index] = saved;
+    else db.adPlacements.push(saved);
+    if (user) audit(db, user, index >= 0 ? 'update' : 'create', 'ad', saved.id, saved.title);
+    return saved;
+  });
+}
+
+export async function getSubscribers(): Promise<NewsletterSubscriber[]> { return (await getDB()).subscribers; }
+export async function addSubscriber(
+  email: string, language: Language = 'en', editions: NewsletterSubscriber['editions'] = ['morning_briefing'],
+): Promise<{ success: boolean; message: string }> {
+  const address = email.trim().toLowerCase();
+  if (address.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) throw new DatabaseValidationError('Enter a valid email address.');
+  return changeDB(db => {
+    const existing = db.subscribers.find(subscriber => subscriber.email.toLowerCase() === address);
+    if (existing) Object.assign(existing, { isActive: true, editions, language });
+    else db.subscribers.push({ id: `sub-${randomUUID()}`, email: address, language, editions, subscribedAt: new Date().toISOString(), isActive: true });
+    return { success: true, message: 'Thank you! Your subscription preferences have been saved.' };
+  });
+}
+export async function getAuditLogs(): Promise<AuditLog[]> { return (await getDB()).auditLogs; }

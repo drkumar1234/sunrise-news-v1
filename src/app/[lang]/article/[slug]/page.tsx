@@ -3,36 +3,44 @@ import { notFound } from 'next/navigation';
 import { 
   getArticleBySlug, getCategories, getAuthors, 
   getArticles, getActiveAd 
-} from '@/lib/db';
+} from '@/lib/public-articles';
 import { Language } from '@/types';
 import { ArticleViewClient } from '@/components/article/ArticleViewClient';
+import { getSiteUrl } from '@/lib/site-url';
 
-export default function ArticlePage({
+export const dynamic = 'force-dynamic';
+
+export default async function ArticlePage({
   params,
 }: {
-  params: { lang: string; slug: string };
+  params: Promise<{ lang: string; slug: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
-  let decodedSlug = params.slug;
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
+  let decodedSlug = resolvedParams.slug;
   try {
-    decodedSlug = decodeURIComponent(params.slug);
+    decodedSlug = decodeURIComponent(resolvedParams.slug);
   } catch {}
 
-  const article = getArticleBySlug(decodedSlug) || getArticleBySlug(params.slug);
+  const article = await getArticleBySlug(decodedSlug) || await getArticleBySlug(resolvedParams.slug);
 
   if (!article) {
     notFound();
   }
 
-  const categories = getCategories();
-  const authors = getAuthors();
+  const [categories, authors] = await Promise.all([
+    getCategories(),
+    getAuthors(),
+  ]);
   const category = categories.find(c => c.id === article.categoryId);
   const author = authors.find(a => a.id === article.authorId);
-  const sidebarAd = getActiveAd('sidebar');
-  const midArticleAd = getActiveAd('mid_content');
+  const [sidebarAd, midArticleAd] = await Promise.all([
+    getActiveAd('sidebar'),
+    getActiveAd('mid_content'),
+  ]);
 
   // Related articles from same category or tags
-  const { articles: relatedCandidates } = getArticles({
+  const { articles: relatedCandidates } = await getArticles({
     categoryId: article.categoryId,
     status: 'published',
   });
@@ -49,6 +57,7 @@ export default function ArticlePage({
       sidebarAd={sidebarAd}
       midArticleAd={midArticleAd}
       lang={lang}
+      siteUrl={getSiteUrl()}
     />
   );
 }

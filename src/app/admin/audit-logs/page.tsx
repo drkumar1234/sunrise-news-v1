@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { History, Shield, Clock, FileText } from 'lucide-react';
 import { AuditLog } from '@/types';
-import { getAuditLogs } from '@/lib/db';
+import { adminRequest } from '@/lib/admin-client';
 
 export default function AdminAuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setLogs(getAuditLogs());
+    adminRequest('/api/admin/audit-logs').then(data => setLogs(data.logs)).catch(error => setError(error.message));
   }, []);
 
   return (
@@ -17,10 +18,11 @@ export default function AdminAuditLogsPage() {
       <div className="border-b pb-4">
         <h1 className="text-2xl font-black text-slate-900">Editorial Audit Trail & Activity Log</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Immutable newsroom activity record tracking article creations, reviews, modifications, and publications.
+          Recent saved newsroom activity, including article changes, publishing, and settings updates.
         </p>
       </div>
 
+      {error && <p role="alert" className="p-3 bg-red-50 text-red-800 rounded-lg">{error}</p>}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">

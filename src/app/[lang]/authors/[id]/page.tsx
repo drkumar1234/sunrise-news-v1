@@ -1,26 +1,32 @@
 import React from 'react';
+import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ShieldCheck, Mail, Twitter, Linkedin, ChevronRight } from 'lucide-react';
-import { getAuthorBySlug, getArticles, getCategories, getAuthors } from '@/lib/db';
+import { getAuthorBySlug, getArticles, getCategories, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
 import { Language } from '@/types';
 
-export default function AuthorProfilePage({
+export const dynamic = 'force-dynamic';
+
+export default async function AuthorProfilePage({
   params,
 }: {
-  params: { lang: string; id: string };
+  params: Promise<{ lang: string; id: string }>;
 }) {
-  const lang: Language = params.lang === 'te' ? 'te' : 'en';
+  const resolvedParams = await params;
+  const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
 
-  const author = getAuthorBySlug(params.id);
+  const author = await getAuthorBySlug(resolvedParams.id);
   if (!author) {
     notFound();
   }
 
-  const { articles } = getArticles({ authorId: author.id, status: 'published' });
-  const categories = getCategories();
+  const [{ articles }, categories] = await Promise.all([
+    getArticles({ authorId: author.id, status: 'published' }),
+    getCategories(),
+  ]);
 
   const authorName = isTelugu && author.nameTe ? author.nameTe : author.name;
   const authorRole = isTelugu && author.roleTe ? author.roleTe : author.role;
@@ -44,7 +50,7 @@ export default function AuthorProfilePage({
       {/* Author Profile Bio Card */}
       <div className="bg-slate-50 rounded-2xl border border-slate-200 p-8 shadow-sm flex flex-col md:flex-row items-center md:items-start gap-6">
         <img
-          src={author.avatar}
+          src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
           alt={authorName}
           className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md flex-shrink-0"
         />
