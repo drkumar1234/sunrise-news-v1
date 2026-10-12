@@ -10,6 +10,7 @@ import {
   getActiveAd, getSettings 
 } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
+import { AuthorAvatar } from '@/components/article/AuthorAvatar';
 import { AdBanner } from '@/components/ui/AdBanner';
 import { Language } from '@/types';
 
@@ -339,18 +340,20 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
 
                 {author && (
                   <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-200">
-                    <img
-                      src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
-                      alt={author.name}
-                      className="w-10 h-10 rounded-full object-cover border border-slate-300"
+                    <AuthorAvatar
+                      author={author}
+                      lang={lang}
+                      className="w-10 h-10 border border-slate-300"
                     />
                     <div>
                       <h4 className="text-xs font-bold text-slate-900">
                         {isTelugu && author.nameTe ? author.nameTe : author.name}
                       </h4>
-                      <p className="text-[10px] text-slate-500">
-                        {isTelugu && author.roleTe ? author.roleTe : author.role}
-                      </p>
+                      {(isTelugu && author.roleTe ? author.roleTe : author.role).trim() && (
+                        <p className="text-[10px] text-slate-500">
+                          {isTelugu && author.roleTe ? author.roleTe : author.role}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

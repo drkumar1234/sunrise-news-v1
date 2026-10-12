@@ -12,6 +12,7 @@ import { ArticleBody } from '@/components/article/ArticleBody';
 import { FactCheckVerdict } from '@/components/article/FactCheckVerdict';
 import { CorrectionsNotice } from '@/components/article/CorrectionsNotice';
 import { NewsCard } from '@/components/article/NewsCard';
+import { AuthorAvatar } from '@/components/article/AuthorAvatar';
 import { AdBanner } from '@/components/ui/AdBanner';
 import { serializeJsonLd, safeUrl } from '@/lib/content-safety';
 
@@ -45,8 +46,9 @@ export function ArticleViewClient({
   const summary = isTelugu && article.summaryTe ? article.summaryTe : article.summary;
   const location = isTelugu && article.locationTe ? article.locationTe : article.location;
   const authorName = author ? (isTelugu && author.nameTe ? author.nameTe : author.name) : 'Staff Reporter';
-  const authorBio = author ? (isTelugu ? author.bioTe : author.bioEn) : '';
-  const authorRole = author ? (isTelugu && author.roleTe ? author.roleTe : author.role) : 'Journalist';
+  const authorBio = author ? (isTelugu && author.bioTe ? author.bioTe : author.bioEn).trim() : '';
+  const authorRole = author ? (isTelugu && author.roleTe ? author.roleTe : author.role).trim() : '';
+  const reportingBeats = author?.reportingBeats.filter(beat => beat.trim()) ?? [];
   const catName = category ? (isTelugu ? category.nameTe : category.nameEn) : 'News';
 
   const publishedDateFormatted = new Date(article.publishedAt).toLocaleDateString(
@@ -152,10 +154,10 @@ export function ArticleViewClient({
         <div className="flex items-center justify-between border-t border-slate-200 pt-4 text-xs text-slate-600 flex-wrap gap-4">
           <div className="flex items-center gap-3">
             {author && (
-              <img
-                src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
-                alt={authorName}
-                className="w-11 h-11 rounded-full object-cover border border-slate-300 shadow-sm"
+              <AuthorAvatar
+                author={author}
+                lang={lang}
+                className="w-11 h-11 border border-slate-300 shadow-sm"
               />
             )}
             <div>
@@ -165,7 +167,7 @@ export function ArticleViewClient({
                   <ShieldCheck className="w-4 h-4 text-brand-orange fill-current text-white" />
                 )}
               </div>
-              <span className="text-slate-500 block">{authorRole}</span>
+              {authorRole && <span className="text-slate-500 block">{authorRole}</span>}
             </div>
           </div>
 
@@ -276,10 +278,10 @@ export function ArticleViewClient({
           {/* Author Detailed Bio Card */}
           {author && (
             <div className="my-10 p-6 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start gap-4">
-              <img
-                src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
-                alt={authorName}
-                className="w-16 h-16 rounded-full object-cover border-2 border-brand-orange flex-shrink-0"
+              <AuthorAvatar
+                author={author}
+                lang={lang}
+                className="w-16 h-16 border-2 border-brand-orange"
               />
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
@@ -291,11 +293,11 @@ export function ArticleViewClient({
                     {isTelugu ? 'మరిన్ని కథనాలు' : 'View Articles'}
                   </Link>
                 </div>
-                <p className="text-xs text-slate-600 mb-2">{authorBio}</p>
-                {author.reportingBeats && author.reportingBeats.length > 0 && (
+                {authorBio && <p className="text-xs text-slate-600 mb-2">{authorBio}</p>}
+                {reportingBeats.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span className="font-semibold text-slate-600">{isTelugu ? 'బీట్స్: ' : 'Reporting Beats: '}</span>
-                    <span>{author.reportingBeats.join(', ')}</span>
+                    <span>{reportingBeats.join(', ')}</span>
                   </div>
                 )}
               </div>

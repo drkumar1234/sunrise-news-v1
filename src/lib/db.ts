@@ -11,6 +11,7 @@ import {
 } from './seed-data';
 import importedData from '../../data/sunrise_news.json';
 import { mutateJSON, readJSON } from './storage';
+import { AUTHOR_ROSTER_VERSION, installNewsroomAuthors } from './author-profiles';
 
 type StoredRevision = ArticleRevision & { headlineTe?: string; summaryTe?: string; bodyTe?: string };
 export interface DatabaseSchema {
@@ -18,6 +19,7 @@ export interface DatabaseSchema {
   categories: Category[];
   tags: Tag[];
   authors: Author[];
+  authorRosterVersion?: number;
   adPlacements: AdPlacement[];
   settings: EditorialSettings;
   auditLogs: AuditLog[];
@@ -67,7 +69,11 @@ function normalizeDatabase(value: unknown): DatabaseSchema {
     articles: array(db.articles, initialArticles).map(normalizeArticle),
     categories: array(db.categories, initialCategories),
     tags: array(db.tags, initialTags).map(tag => ({ ...tag, aliases: Array.isArray(tag.aliases) ? tag.aliases : [] })),
-    authors: array(db.authors, initialAuthors), adPlacements: array(db.adPlacements, initialAdPlacements),
+    authors: (db.authorRosterVersion || 0) < AUTHOR_ROSTER_VERSION
+      ? installNewsroomAuthors(array(db.authors, initialAuthors))
+      : array(db.authors, initialAuthors),
+    authorRosterVersion: Math.max(db.authorRosterVersion || 0, AUTHOR_ROSTER_VERSION),
+    adPlacements: array(db.adPlacements, initialAdPlacements),
     settings: { ...initialSettings, ...db.settings }, auditLogs: array(db.auditLogs, initialAuditLogs),
     revisions: array(db.revisions, []), subscribers: array(db.subscribers, []),
   };
@@ -78,8 +84,17 @@ const seedDatabase = (): DatabaseSchema => normalizeDatabase(structuredClone(imp
 
 // React memoization is scoped to a server render/request, never a global data
 // cache. Route handlers (including mutations) read storage afresh on each call.
-const loadDB = async (): Promise<DatabaseSchema> =>
-  normalizeDatabase(await readJSON<DatabaseSchema>(STORE, KEY, seedDatabase));
+const loadDB = async (): Promise<DatabaseSchema> => {
+  const stored = await readJSON<DatabaseSchema>(STORE, KEY, seedDatabase);
+  if ((stored.authorRosterVersion || 0) >= AUTHOR_ROSTER_VERSION) return normalizeDatabase(stored);
+  // Apply the one-time roster replacement to live storage with the same CAS
+  // transaction used by editorial saves. Never overwrite newer cloud articles
+  // with the bundled seed, or assign a real byline to an old sample attribution.
+  return mutateJSON<DatabaseSchema, DatabaseSchema>(STORE, KEY, seedDatabase, current => {
+    Object.assign(current, normalizeDatabase(current));
+    return current;
+  });
+};
 // React 18 exposes cache through Next's server component runtime, while its
 // ordinary Node/route-handler entry does not. Both execution paths stay valid.
 const getDB = typeof cache === 'function' ? cache(loadDB) : loadDB;

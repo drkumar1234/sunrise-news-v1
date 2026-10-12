@@ -140,22 +140,24 @@ function ArticleEditorContent() {
 
   // Load existing article if editing
   useEffect(() => {
+    setCatalogReady(false);
     setArticleReady(!editId);
+    setAuthorId('');
     setLoadError('');
-    adminRequest('/api/catalog').then(data => {
+    const catalogRequest = adminRequest('/api/catalog');
+    catalogRequest.then(data => {
       setCategories(data.categories);
       setTagsList(data.tags);
       setAuthors(data.authors);
       setCatalogReady(true);
       if (!editId) {
         setCategoryId(data.categories[0]?.id || '');
-        setAuthorId(data.authors[0]?.id || '');
       }
     }).catch(error => setLoadError(error.message));
 
     if (editId) {
-      adminRequest(`/api/articles/${editId}`)
-        .then((data) => {
+      Promise.all([catalogRequest, adminRequest(`/api/articles/${editId}`)])
+        .then(([catalog, data]) => {
           if (data.article) {
             const a = data.article;
             setHeadline(a.headline || '');
@@ -169,7 +171,7 @@ function ArticleEditorContent() {
             setCategoryId(a.categoryId || '');
             setSubcategoryId(a.subcategoryId || '');
             setSelectedTags(a.tags || []);
-            setAuthorId(a.authorId || '');
+            setAuthorId(catalog.authors.some((author: Author) => author.id === a.authorId) ? a.authorId : '');
             setLocation(a.location || 'Amaravati');
             setLocationTe(a.locationTe || 'అమరావతి');
             setLanguage(a.language || 'en');
@@ -368,6 +370,10 @@ function ArticleEditorContent() {
       setErrorMessage('Add a headline and story text before saving.');
       return;
     }
+    if (!authors.some(author => author.id === authorId)) {
+      setErrorMessage('Select an author for this article before saving or publishing.');
+      return;
+    }
     setSaving(true);
     setErrorMessage('');
 
@@ -402,7 +408,7 @@ function ArticleEditorContent() {
       categoryId: categoryId || categories[0]?.id || 'cat-ap',
       subcategoryId,
       tags: selectedTags,
-      authorId: authorId || authors[0]?.id || 'auth-1',
+      authorId,
       location: location || 'Amaravati',
       locationTe: locationTe || 'అమరావతి',
       language,
@@ -1054,15 +1060,18 @@ function ArticleEditorContent() {
             </h3>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Assigned Author:</label>
+              <label htmlFor="article-author" className="block text-xs font-semibold text-slate-600 mb-1">Assigned Author:</label>
               <select
+                id="article-author"
                 value={authorId}
                 onChange={(e) => setAuthorId(e.target.value)}
+                required
                 className="w-full p-2 border rounded-lg text-xs bg-white"
               >
+                <option value="" disabled>Select author</option>
                 {authors.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.role})
+                    {a.name}{a.role ? ` (${a.role})` : ''}
                   </option>
                 ))}
               </select>

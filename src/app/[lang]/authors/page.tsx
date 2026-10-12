@@ -1,8 +1,8 @@
 import React from 'react';
-import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
-import { ShieldCheck, Mail, Twitter, ChevronRight } from 'lucide-react';
+import { ShieldCheck, ChevronRight } from 'lucide-react';
 import { getAuthors, getArticles } from '@/lib/public-articles';
+import { AuthorAvatar } from '@/components/article/AuthorAvatar';
 import { Language } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -33,16 +33,17 @@ export default async function AuthorsDirectoryPage({
         </h1>
         <p className="text-slate-600 text-sm mt-1 max-w-2xl">
           {isTelugu
-            ? 'క్షేత్రస్థాయిలో నిజాయితీగా పనిచేస్తూ నిరంతరం ప్రజా సమస్యలను వెలికితీసే సన్‌రైజ్ న్యూస్ పాత్రికేయ బృందం.'
-            : 'Meet the credentialed journalists, regional correspondents, and specialists behind Sunrise News.'}
+            ? 'సన్‌రైజ్ న్యూస్ రచయితలు మరియు వారి ప్రచురిత కథనాలను చూడండి.'
+            : 'Meet the Sunrise News contributors and explore their published articles.'}
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {authors.map((author) => {
           const authorName = isTelugu && author.nameTe ? author.nameTe : author.name;
-          const authorRole = isTelugu && author.roleTe ? author.roleTe : author.role;
-          const authorBio = isTelugu ? author.bioTe : author.bioEn;
+          const authorRole = (isTelugu && author.roleTe ? author.roleTe : author.role).trim();
+          const authorBio = (isTelugu && author.bioTe ? author.bioTe : author.bioEn).trim();
+          const reportingBeats = author.reportingBeats.filter(beat => beat.trim());
           const articleCount = articles.filter(a => a.authorId === author.id).length;
 
           return (
@@ -52,10 +53,10 @@ export default async function AuthorsDirectoryPage({
             >
               <div>
                 <div className="flex items-center gap-4 mb-4">
-                  <img
-                    src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
-                    alt={authorName}
-                    className="w-16 h-16 rounded-full object-cover border-2 border-brand-orange"
+                  <AuthorAvatar
+                    author={author}
+                    lang={lang}
+                    className="w-16 h-16 border-2 border-brand-orange"
                   />
                   <div>
                     <div className="flex items-center gap-1.5">
@@ -64,19 +65,23 @@ export default async function AuthorsDirectoryPage({
                         <ShieldCheck className="w-4 h-4 text-brand-orange" />
                       )}
                     </div>
-                    <p className="text-xs text-brand-orange font-semibold">{authorRole}</p>
+                    {authorRole && <p className="text-xs text-brand-orange font-semibold">{authorRole}</p>}
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-4">
-                  {authorBio}
-                </p>
+                {authorBio && (
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-4">
+                    {authorBio}
+                  </p>
+                )}
 
                 <div className="text-xs text-slate-400 space-y-1">
-                  <div>
-                    <span className="font-semibold text-slate-600">{isTelugu ? 'బీట్స్: ' : 'Beats: '}</span>
-                    <span>{author.reportingBeats.join(', ')}</span>
-                  </div>
+                  {reportingBeats.length > 0 && (
+                    <div>
+                      <span className="font-semibold text-slate-600">{isTelugu ? 'బీట్స్: ' : 'Beats: '}</span>
+                      <span>{reportingBeats.join(', ')}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="font-semibold text-slate-600">{isTelugu ? 'ప్రచురిత కథనాలు: ' : 'Articles: '}</span>
                     <strong className="text-slate-900">{articleCount}</strong>
@@ -86,7 +91,7 @@ export default async function AuthorsDirectoryPage({
 
               <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {author.twitter && (
+                  {author.twitter?.trim() && (
                     <span className="text-xs text-slate-500">{author.twitter}</span>
                   )}
                 </div>

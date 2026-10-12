@@ -10,6 +10,7 @@ export interface Author {
   nameTe?: string;
   slug: string;
   avatar: string;
+  avatarFit?: 'cover' | 'contain';
   role: string;
   roleTe?: string;
   bioEn: string;

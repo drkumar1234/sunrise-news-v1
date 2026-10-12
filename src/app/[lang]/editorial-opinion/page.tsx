@@ -1,8 +1,8 @@
 import React from 'react';
-import { safeUrl } from '@/lib/content-safety';
 import Link from 'next/link';
 import { PenTool, Quote } from 'lucide-react';
-import { getArticles, getCategories, getAuthors } from '@/lib/public-articles';
+import { getArticles, getAuthors } from '@/lib/public-articles';
+import { AuthorAvatar } from '@/components/article/AuthorAvatar';
 import { Language } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -63,18 +63,20 @@ export default async function EditorialOpinionPage({
 
               {author && (
                 <div className="flex items-center gap-3 mt-6 pt-4 border-t border-slate-200">
-                  <img
-                    src={safeUrl(author.avatar, '/brand/sunrise-news-logo.jpg')}
-                    alt={author.name}
-                    className="w-12 h-12 rounded-full object-cover border border-slate-300"
+                  <AuthorAvatar
+                    author={author}
+                    lang={lang}
+                    className="w-12 h-12 border border-slate-300"
                   />
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">
                       {isTelugu && author.nameTe ? author.nameTe : author.name}
                     </h3>
-                    <p className="text-[11px] text-slate-500">
-                      {isTelugu && author.roleTe ? author.roleTe : author.role}
-                    </p>
+                    {(isTelugu && author.roleTe ? author.roleTe : author.role).trim() && (
+                      <p className="text-[11px] text-slate-500">
+                        {isTelugu && author.roleTe ? author.roleTe : author.role}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
