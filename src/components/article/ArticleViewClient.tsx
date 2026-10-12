@@ -222,6 +222,7 @@ export function ArticleViewClient({
             categoryName={catName}
             authorName={authorName}
             location={location}
+            publishedAt={article.publishedAt}
           />
 
           {/* Fact Check Box if applicable */}

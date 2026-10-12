@@ -21,6 +21,7 @@ interface ReaderToolsProps {
   categoryName?: string;
   authorName?: string;
   location?: string;
+  publishedAt?: string;
 }
 
 export const ReaderTools: React.FC<ReaderToolsProps> = ({
@@ -35,6 +36,7 @@ export const ReaderTools: React.FC<ReaderToolsProps> = ({
   categoryName,
   authorName,
   location,
+  publishedAt,
 }) => {
   const [copied, setCopied] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -241,6 +243,7 @@ export const ReaderTools: React.FC<ReaderToolsProps> = ({
         categoryName={categoryName}
         authorName={authorName}
         location={location}
+        publishedAt={publishedAt}
         lang={lang}
       />
     </>
