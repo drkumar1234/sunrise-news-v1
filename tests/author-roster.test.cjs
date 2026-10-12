@@ -11,7 +11,9 @@ const names = ['Ramesh Varma', 'Kavitha Rao', 'S. Krishna Murthy', 'Dr. B. Venka
 const oldAuthors = names.map((name, index) => ({ ...newsroomAuthors[0], id: `auth-${index + 1}`, name }));
 
 test('roster contains the three supplied profiles and keeps customized profiles', () => {
-  assert.deepEqual(installNewsroomAuthors(oldAuthors).map(author => author.name), ['OG Prakash', 'D Ravi Kumar', 'Nag News']);
+  assert.deepEqual(installNewsroomAuthors(oldAuthors).map(author => [author.name, author.role]), [
+    ['Didde Ravi Kumar', 'MD, Editor'], ['OG Prakash', 'Sub Editor'], ['Nag News', 'Sub Editor'],
+  ]);
   const customized = { ...oldAuthors[0], name: 'A separately edited author' };
   const migrated = installNewsroomAuthors([customized, ...oldAuthors.slice(1)]);
   assert.deepEqual(migrated.at(-1), customized);
@@ -33,20 +35,22 @@ test('stored roster migration preserves live content and persists once', async (
     process.env.SUNRISE_DATA_DIR = directory;
     process.env.SUNRISE_STORAGE = 'local';
     const current = structuredClone(seed);
-    current.authors = oldAuthors;
-    delete current.authorRosterVersion;
+    current.authors = newsroomAuthors.map(author => ({ ...author, name: author.id === 'author-d-ravi-kumar' ? 'D Ravi Kumar' : author.name, role: '' })).reverse();
+    current.authors[0].bioEn = 'A saved newsroom biography';
+    current.authorRosterVersion = 1;
     current.articles[0].headline = 'A newer story saved after deployment';
     current.settings.siteNameEn = 'Live newsroom setting';
     const file = path.join(directory, 'sunrise_news.json');
     await fs.writeFile(file, JSON.stringify(current));
     const migrated = await db.getAllData();
     assert.equal(migrated.authorRosterVersion, AUTHOR_ROSTER_VERSION);
-    assert.deepEqual(migrated.authors, newsroomAuthors);
+    const expectedAuthors = newsroomAuthors.map(author => ({ ...author, bioEn: author.id === current.authors[0].id ? 'A saved newsroom biography' : author.bioEn }));
+    assert.deepEqual(migrated.authors, expectedAuthors);
     for (const collection of ['articles', 'settings', 'subscribers', 'revisions', 'auditLogs']) {
       assert.deepEqual(migrated[collection], current[collection] || []);
     }
     const saved = await fs.readFile(file, 'utf8');
-    assert.deepEqual(JSON.parse(saved).authors, newsroomAuthors);
+    assert.deepEqual(JSON.parse(saved).authors, expectedAuthors);
     await db.getAllData();
     assert.equal(await fs.readFile(file, 'utf8'), saved);
     assert.ok(migrated.articles.some(article => article.authorId.startsWith('auth-')),
