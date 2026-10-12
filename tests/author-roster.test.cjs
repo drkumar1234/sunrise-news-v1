@@ -40,15 +40,19 @@ test('stored roster migration preserves live content and persists once', async (
     current.authorRosterVersion = 1;
     current.articles[0].headline = 'A newer story saved after deployment';
     current.settings.siteNameEn = 'Live newsroom setting';
+    current.epapers = [{ id: 'existing-edition', date: '2026-10-11', status: 'draft' }];
     const file = path.join(directory, 'sunrise_news.json');
     await fs.writeFile(file, JSON.stringify(current));
     const migrated = await db.getAllData();
     assert.equal(migrated.authorRosterVersion, AUTHOR_ROSTER_VERSION);
     const expectedAuthors = newsroomAuthors.map(author => ({ ...author, bioEn: author.id === current.authors[0].id ? 'A saved newsroom biography' : author.bioEn }));
     assert.deepEqual(migrated.authors, expectedAuthors);
-    for (const collection of ['articles', 'settings', 'subscribers', 'revisions', 'auditLogs']) {
+    for (const collection of ['articles', 'settings', 'subscribers', 'revisions', 'auditLogs', 'epapers']) {
       assert.deepEqual(migrated[collection], current[collection] || []);
     }
+    assert.deepEqual(migrated.categories.filter(category => category.slug !== 'e-paper-daily-pdf'), current.categories);
+    assert.equal(migrated.categories.filter(category => category.slug === 'e-paper-daily-pdf').length, 1);
+    assert.equal(migrated.epaperVersion, 1);
     const saved = await fs.readFile(file, 'utf8');
     assert.deepEqual(JSON.parse(saved).authors, expectedAuthors);
     await db.getAllData();

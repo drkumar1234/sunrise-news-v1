@@ -9,6 +9,7 @@ import { getArticles, getCategories, getSubscribers, getAuditLogs } from '@/lib/
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
+import { EpaperUploadPanel } from '@/components/epaper/EpaperUploadPanel';
 
 export const dynamic = 'force-dynamic';
 export default async function AdminDashboardPage() {
@@ -88,6 +89,8 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      <EpaperUploadPanel />
 
       {/* Metric Cards (4 Columns) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

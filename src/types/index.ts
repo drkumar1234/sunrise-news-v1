@@ -134,6 +134,17 @@ export interface AdPlacement {
   isActive: boolean;
 }
 
+export interface EpaperEdition {
+  id: string;
+  title: string;
+  date: string;
+  edition: string;
+  status: 'draft' | 'published' | 'archived';
+  file: { name: string; url: string; size: number; contentType: 'application/pdf' | 'image/jpeg' };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface NewsletterSubscriber {
   id: string;
   email: string;
@@ -149,7 +160,7 @@ export interface AuditLog {
   userName: string;
   userRole: UserRole;
   action: 'create' | 'update' | 'publish' | 'archive' | 'revert' | 'delete' | 'login';
-  targetType: 'article' | 'category' | 'tag' | 'ad' | 'settings';
+  targetType: 'article' | 'category' | 'tag' | 'ad' | 'settings' | 'epaper';
   targetId: string;
   targetTitle: string;
   timestamp: string;

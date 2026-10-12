@@ -26,6 +26,9 @@ const ads = require('../src/app/api/admin/ads/route.ts');
 const audit = require('../src/app/api/admin/audit-logs/route.ts');
 const search = require('../src/app/api/search/route.ts');
 const catalog = require('../src/app/api/catalog/route.ts');
+const epapers = require('../src/app/api/admin/epapers/route.ts');
+const publicEpapers = require('../src/app/api/epapers/route.ts');
+const media = require('../src/app/api/media/[key]/route.ts');
 const origin = 'https://sunrise.example';
 let dataDirectory, oldEnvironment;
 const environmentKeys = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'SESSION_SECRET', 'SUNRISE_DATA_DIR', 'SUNRISE_STORAGE', 'NETLIFY', 'NODE_ENV'];
@@ -109,16 +112,70 @@ test('private APIs and every write reject anonymous and cross-origin requests', 
     [articles.POST, '/api/articles'], [article.PUT, '/api/articles/missing', context('missing')],
     [article.DELETE, '/api/articles/missing', context('missing')], [restore.POST, '/api/articles/missing/restore', context('missing')],
     [settings.PUT, '/api/settings'], [categories.PUT, '/api/admin/categories'], [tags.PUT, '/api/admin/tags'], [ads.PUT, '/api/admin/ads'],
+    [epapers.POST, '/api/admin/epapers'], [epapers.PUT, '/api/admin/epapers'],
   ];
   for (const [handler, url, ctx] of endpoints) {
     assert.equal((await handler(request('POST', url, {}), ctx)).status, 401, url);
     assert.equal((await handler(request('POST', url, {}, await signedCookie(), 'https://attacker.example'), ctx)).status, 403, url);
   }
-  for (const [handler, url] of [[newsletter.GET, '/api/newsletter'], [categories.GET, '/api/admin/categories'], [tags.GET, '/api/admin/tags'], [ads.GET, '/api/admin/ads'], [audit.GET, '/api/admin/audit-logs']]) {
+  for (const [handler, url] of [[epapers.GET, '/api/admin/epapers'], [newsletter.GET, '/api/newsletter'], [categories.GET, '/api/admin/categories'], [tags.GET, '/api/admin/tags'], [ads.GET, '/api/admin/ads'], [audit.GET, '/api/admin/audit-logs']]) {
     assert.equal((await handler(request('GET', url))).status, 401, url);
   }
   assert.throws(() => auth.requireSameOrigin(new Request(origin + '/api/auth/login', { method: 'POST' })), error => error.status === 403);
   assert.equal((await login.POST(request('POST', '/api/auth/login', { email: 'owner@example.test', password: process.env.ADMIN_PASSWORD }, undefined, 'https://attacker.example'))).status, 403);
+});
+
+const editionUpload = (cookie, { name = 'daily.pdf', bytes = Buffer.from('%PDF-1.7\nTest edition\n%%EOF'), date = '2026-10-12', status = 'draft', extra } = {}) => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ title: 'Daily test edition', date, edition: 'AP & Telangana', status })) form.set(key, value);
+  form.set('file', new Blob([bytes]), name);
+  if (extra) form.set(extra, 'untrusted value');
+  return new Request(origin + '/api/admin/epapers', { method: 'POST', headers: { origin, cookie }, body: form });
+};
+
+test('daily editions persist with private drafts, public publishing, PDF viewing and reversible archiving', async () => {
+  const cookie = await signedCookie();
+  const created = await epapers.POST(editionUpload(cookie));
+  assert.equal(created.status, 201);
+  const item = (await created.json()).edition;
+  const key = item.file.url.split('/').at(-1);
+  const mediaContext = { params: Promise.resolve({ key }) };
+  assert.equal(item.status, 'draft');
+  assert.equal(item.file.contentType, 'application/pdf');
+  assert.equal((await db.getEpaperEditions(true))[0].id, item.id);
+  assert.deepEqual((await (await publicEpapers.GET()).json()).editions, []);
+  assert.equal((await media.GET(request('GET', item.file.url), mediaContext)).status, 404);
+  assert.equal((await media.GET(request('GET', item.file.url, undefined, cookie), mediaContext)).status, 200);
+  assert.equal((await epapers.PUT(request('PUT', '/api/admin/epapers', { id: item.id, status: 'published' }, cookie))).status, 200);
+  assert.equal((await (await publicEpapers.GET()).json()).editions[0].id, item.id);
+  const opened = await media.GET(request('GET', item.file.url + '?view=1'), mediaContext);
+  assert.equal(opened.status, 200);
+  assert.match(opened.headers.get('content-disposition'), /^inline;/);
+  assert.match(await opened.text(), /Test edition/);
+  const download = await media.GET(request('GET', item.file.url), mediaContext);
+  assert.match(download.headers.get('content-disposition'), /^attachment;/);
+  assert.equal((await epapers.PUT(request('PUT', '/api/admin/epapers', { id: item.id, status: 'archived' }, cookie))).status, 200);
+  assert.deepEqual((await (await publicEpapers.GET()).json()).editions, []);
+  assert.equal((await media.GET(request('GET', item.file.url), mediaContext)).status, 404);
+  assert.equal((await epapers.PUT(request('PUT', '/api/admin/epapers', { id: item.id, status: 'published' }, cookie))).status, 200);
+  assert.equal((await media.GET(request('GET', item.file.url), mediaContext)).status, 200);
+  assert.ok((await db.getAuditLogs()).some(log => log.targetType === 'epaper' && log.targetId === item.id && log.action === 'archive'));
+});
+
+test('JPG editions publish and unsafe or oversized edition uploads leave the archive unchanged', async () => {
+  const cookie = await signedCookie();
+  const jpeg = await require('node:fs/promises').readFile(path.join(process.cwd(), 'public/brand/news-clip-logo.jpg'));
+  const response = await epapers.POST(editionUpload(cookie, { name: 'front-page.jpg', bytes: jpeg, status: 'published' }));
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).edition.file.contentType, 'image/jpeg');
+  const failures = [
+    [{ name: 'unsupported.png' }, 400], [{ bytes: Buffer.from('not a PDF') }, 400],
+    [{ date: '2026-02-30' }, 400], [{ status: 'admin' }, 400], [{ extra: 'url' }, 400],
+    [{ bytes: Buffer.alloc(4 * 1024 * 1024 + 1) }, 413],
+  ];
+  for (const [input, expected] of failures) assert.equal((await epapers.POST(editionUpload(cookie, input))).status, expected);
+  assert.equal((await db.getEpaperEditions(true)).length, 1);
+  assert.equal((await epapers.PUT(request('PUT', '/api/admin/epapers', { id: 'missing', status: 'published' }, cookie))).status, 404);
 });
 
 test('drafts, revisions and internal notes stay private; publishing and restore persist', async () => {

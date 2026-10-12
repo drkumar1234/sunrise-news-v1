@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ChevronRight, Folder } from 'lucide-react';
 import { getCategoryBySlug, getCategories, getArticles, getAuthors } from '@/lib/public-articles';
 import { NewsCard } from '@/components/article/NewsCard';
@@ -16,6 +16,7 @@ export default async function CategoryPage({
   const resolvedParams = await params;
   const lang: Language = resolvedParams.lang === 'te' ? 'te' : 'en';
   const isTelugu = lang === 'te';
+  if (resolvedParams.slug === 'e-paper-daily-pdf') redirect(`/${lang}/epaper`);
 
   const category = await getCategoryBySlug(resolvedParams.slug);
   if (!category) {

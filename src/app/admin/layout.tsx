@@ -50,6 +50,7 @@ export default function AdminLayout({
     { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { label: 'All Articles', href: '/admin/articles', icon: FileText },
     { label: 'Write Story', href: '/admin/articles/editor', icon: PlusCircle, highlight: true },
+    { label: 'E-paper Daily PDF', href: '/admin/epapers', icon: FileText },
     { label: 'Categories', href: '/admin/categories', icon: FolderTree },
     { label: 'Tags & Canonical', href: '/admin/tags', icon: Tags },
     { label: 'Breaking Ticker', href: '/admin/ticker', icon: Radio },
