@@ -19,10 +19,10 @@ export async function PUT(request: Request, context: Context) {
     const params = await context.params;
     const user = await requireAdmin(request);
     const raw = await readJson(request);
-    const updates = articleInput(raw, true);
+    const { autoSlug, ...updates } = articleInput(raw, true);
     const [categories, authors] = await Promise.all([getCategories(), getAuthors()]);
     if ((updates.categoryId && !categories.some(c => c.id === updates.categoryId)) || (updates.authorId && !authors.some(a => a.id === updates.authorId))) throw new ApiError(400, 'Select a valid category and author.');
-    const article = await updateArticle(params.id, updates, user, raw.changeNote === undefined ? undefined : string(raw.changeNote, 'change note', 2000));
+    const article = await updateArticle(params.id, updates, user, raw.changeNote === undefined ? undefined : string(raw.changeNote, 'change note', 2000), { autoSlug });
     if (!article) throw new ApiError(404, 'Article not found.');
     return json({ article });
   } catch (error) { return apiError(error); }

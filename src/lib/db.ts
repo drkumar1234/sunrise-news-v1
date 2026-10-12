@@ -12,6 +12,7 @@ import {
 import importedData from '../../data/sunrise_news.json';
 import { mutateJSON, readJSON } from './storage';
 import { AUTHOR_ROSTER_VERSION, installNewsroomAuthors } from './author-profiles';
+import { slugifyHeadline } from './article-slug';
 
 type StoredRevision = ArticleRevision & { headlineTe?: string; summaryTe?: string; bodyTe?: string };
 export interface DatabaseSchema {
@@ -171,13 +172,7 @@ export async function getArticles(options: GetArticlesOptions = {}): Promise<{ a
 }
 
 export function generateSafeSlug(value: string, fallbackPrefix = 'story'): string {
-  const clean = cleanText(value).normalize('NFKC');
-  const english = clean.toLowerCase().replace(/[^\w\s-]/g, '').trim()
-    .replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-  if (english.length >= 3) return english.slice(0, 80).replace(/-+$/g, '');
-  const unicode = clean.toLowerCase().replace(/[^a-z0-9\u0C00-\u0C7F\s_-]/g, '').trim()
-    .replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '');
-  return unicode || `${fallbackPrefix}-${randomUUID()}`;
+  return slugifyHeadline(value) || `${fallbackPrefix}-${randomUUID()}`;
 }
 
 const slugKey = (slug: string) => slug.normalize('NFKC').trim().toLowerCase();
@@ -185,6 +180,17 @@ function checkSlug<T extends { id: string; slug: string }>(items: T[], slug: str
   if (items.some(item => item.id !== excludeId && slugKey(item.slug) === slugKey(slug))) {
     throw new DatabaseValidationError('That URL slug is already in use. Choose a different slug.', 409);
   }
+}
+
+type ArticleWriteOptions = { autoSlug?: boolean };
+function availableArticleSlug(articles: Article[], base: string, excludeId?: string): string {
+  const used = new Set(articles.filter(article => article.id !== excludeId).map(article => slugKey(article.slug)));
+  let candidate = base;
+  for (let number = 2; used.has(slugKey(candidate)); number++) {
+    const suffix = `-${number}`;
+    candidate = `${base.slice(0, 80 - suffix.length).replace(/-+$/g, '')}${suffix}`;
+  }
+  return candidate;
 }
 
 export async function getArticleBySlug(slug: string): Promise<Article | undefined> {
@@ -214,6 +220,7 @@ function audit(db: DatabaseSchema, user: Editor, action: AuditLog['action'], tar
 export async function createArticle(
   articleData: Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>,
   user: Editor,
+  options: ArticleWriteOptions = {},
 ): Promise<Article> {
   const now = new Date().toISOString();
   const headline = cleanText(articleData.headline) || cleanText(articleData.headlineTe);
@@ -228,14 +235,15 @@ export async function createArticle(
     publishedAt: now, updatedAt: now, readingTimeMinutes: readingTime(articleData),
   });
   return changeDB(db => {
-    checkSlug(db.articles, article.slug);
-    db.articles.unshift(article);
-    audit(db, user, 'create', 'article', article.id, article.headline, `Article created with status: ${article.status}`);
-    return article;
+    const saved = options.autoSlug ? { ...article, slug: availableArticleSlug(db.articles, article.slug) } : article;
+    checkSlug(db.articles, saved.slug);
+    db.articles.unshift(saved);
+    audit(db, user, 'create', 'article', saved.id, saved.headline, `Article created with status: ${saved.status}`);
+    return saved;
   });
 }
 
-function applyArticleUpdate(db: DatabaseSchema, id: string, updates: Partial<Article>, user: Editor, changeNote?: string): Article | null {
+function applyArticleUpdate(db: DatabaseSchema, id: string, updates: Partial<Article>, user: Editor, changeNote?: string, options: ArticleWriteOptions = {}): Article | null {
   const index = db.articles.findIndex(article => article.id === id);
   if (index === -1) return null;
   if (updates.status !== undefined && !statuses.includes(updates.status)) throw new DatabaseValidationError('Invalid article status.');
@@ -249,6 +257,7 @@ function applyArticleUpdate(db: DatabaseSchema, id: string, updates: Partial<Art
   });
   if (!cleanText(updated.headline) && !cleanText(updated.headlineTe)) throw new DatabaseValidationError('An article headline is required.');
   updated.readingTimeMinutes = readingTime(updated);
+  if (options.autoSlug && updates.slug !== undefined) updated.slug = availableArticleSlug(db.articles, updated.slug, id);
   checkSlug(db.articles, updated.slug, id);
   const version = Math.max(0, ...db.revisions.filter(revision => revision.articleId === id).map(revision => revision.version)) + 1;
   db.revisions.unshift({
@@ -262,8 +271,8 @@ function applyArticleUpdate(db: DatabaseSchema, id: string, updates: Partial<Art
   return updated;
 }
 
-export async function updateArticle(id: string, updates: Partial<Article>, user: Editor, changeNote?: string): Promise<Article | null> {
-  return changeDB(db => applyArticleUpdate(db, id, updates, user, changeNote));
+export async function updateArticle(id: string, updates: Partial<Article>, user: Editor, changeNote?: string, options: ArticleWriteOptions = {}): Promise<Article | null> {
+  return changeDB(db => applyArticleUpdate(db, id, updates, user, changeNote, options));
 }
 
 export async function deleteArticle(id: string, user: Editor): Promise<boolean> {

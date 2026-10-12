@@ -1,5 +1,6 @@
 import { ApiError } from './auth';
 import type { Article, Category, Tag, AdPlacement, EditorialSettings } from '@/types';
+import { slugifyHeadline } from './article-slug';
 
 type ObjectValue = Record<string, unknown>;
 export function object(value: unknown): ObjectValue {
@@ -64,18 +65,19 @@ export async function readJson(request: Request, maxBytes = 600_000): Promise<Ob
 }
 
 export const STATUSES = ['draft', 'review', 'approved', 'published', 'archived'] as const;
-export function articleInput(input: ObjectValue, partial = false): Partial<Article> {
+export function articleInput(input: ObjectValue, partial = false): Partial<Article> & { autoSlug?: boolean } {
   const textFields: Record<string, number> = { headline: 500, headlineTe: 500, summary: 4000, summaryTe: 4000, body: 200000, bodyTe: 200000, categoryId: 120, subcategoryId: 120, authorId: 120, location: 200, locationTe: 200, imageCaption: 1000, imageCredit: 300, internalNotes: 20000, seoTitle: 500, seoDescription: 1000 };
   const boolFields = ['isBreaking', 'isLeadStory', 'isEditorPick', 'isTrending'];
   const urlFields = ['featuredImage', 'mediaUrl', 'canonicalUrl'];
-  const otherFields = ['slug', 'tags', 'language', 'status', 'format', 'factCheck', 'galleryImages', 'attachedDocument'];
+  const otherFields = ['slug', 'autoSlug', 'tags', 'language', 'status', 'format', 'factCheck', 'galleryImages', 'attachedDocument'];
   onlyKeys(input, [...Object.keys(textFields), ...boolFields, ...urlFields, ...otherFields, 'changeNote']);
   const output: ObjectValue = {};
   for (const [key, max] of Object.entries(textFields)) if (key in input) output[key] = string(input[key], key, max, ['headline', 'categoryId', 'authorId', 'body'].includes(key));
   for (const key of boolFields) if (key in input) output[key] = boolean(input[key], key);
   for (const key of urlFields) if (key in input) output[key] = safeUrl(input[key], key);
   if ('slug' in input) output.slug = slug(input.slug);
-  if ('tags' in input) output.tags = strings(input.tags, 'tags').map(tag => slug(tag, 'tag'));
+  if ('autoSlug' in input) output.autoSlug = boolean(input.autoSlug, 'automatic URL');
+  if ('tags' in input) output.tags = Array.from(new Set(strings(input.tags, 'tags').map(tag => slug(slugifyHeadline(tag), 'tag'))));
   if ('language' in input) output.language = choice(input.language, ['en', 'te'], 'language');
   if ('status' in input) output.status = choice(input.status, STATUSES, 'status');
   if ('format' in input) output.format = choice(input.format, ['article', 'video', 'photo', 'infographic', 'fact-check', 'investigation', 'opinion', 'live'], 'format');
@@ -114,7 +116,7 @@ export function articleInput(input: ObjectValue, partial = false): Partial<Artic
     Object.assign(output, { summary: '', tags: [], location: '', imageCaption: '', imageCredit: '', featuredImage: '', language: 'en', status: 'draft', ...output });
   }
   if (!Object.keys(output).length) throw new ApiError(400, 'No editable fields were supplied.');
-  return output as Partial<Article>;
+  return output as Partial<Article> & { autoSlug?: boolean };
 }
 
 export function categoryInput(input: ObjectValue): Category {

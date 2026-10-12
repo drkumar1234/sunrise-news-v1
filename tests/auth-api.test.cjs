@@ -164,6 +164,40 @@ test('metadata, advertising and settings save through authenticated APIs', async
   assert.ok((await (await audit.GET(request('GET', '/api/admin/audit-logs', undefined, cookie))).json()).logs.some(log => log.targetId === ad.id));
 });
 
+test('automatic article URLs resolve concurrent collisions while custom URLs remain protected', async () => {
+  const cookie = await signedCookie();
+  const current = await db.getAllData();
+  const { slugifyHeadline } = require('../src/lib/article-slug.ts');
+  const headline = 'జాతీయస్థాయి సమావేశంలో ASR జిల్లా అధికారి';
+  const input = {
+    slug: slugifyHeadline(headline), autoSlug: true, headline, headlineTe: headline,
+    body: 'తెలుగు వార్తా కథనం', bodyTe: 'తెలుగు వార్తా కథనం', language: 'te', status: 'draft',
+    categoryId: current.categories[0].id, authorId: current.authors[0].id, tags: ['new delhi', 'New Delhi'],
+  };
+  const responses = await Promise.all(Array.from({ length: 4 }, () => articles.POST(request('POST', '/api/articles', input, cookie))));
+  const saved = [];
+  for (const response of responses) {
+    assert.equal(response.status, 201);
+    saved.push((await response.json()).article);
+  }
+  assert.equal(new Set(saved.map(story => story.slug)).size, 4);
+  assert.ok(saved.some(story => story.slug === input.slug));
+  for (const story of saved) {
+    assert.ok(story.slug.length <= 80);
+    assert.ok(!('autoSlug' in story));
+    assert.deepEqual(story.tags, ['new-delhi']);
+    assert.equal((await db.getArticleBySlug(story.slug)).id, story.id);
+  }
+  const original = saved[0];
+  const updatedResponse = await article.PUT(request('PUT', '/api/articles/' + original.id,
+    { slug: original.slug, headline: 'Updated Telugu story' }, cookie), context(original.id));
+  assert.equal(updatedResponse.status, 200);
+  assert.equal((await updatedResponse.json()).article.id, original.id);
+  assert.equal((await db.getAllData()).articles.length, current.articles.length + 4);
+  assert.equal((await articles.POST(request('POST', '/api/articles', { ...input, slug: original.slug, autoSlug: false }, cookie))).status, 409);
+  assert.equal((await articles.POST(request('POST', '/api/articles', { ...input, autoSlug: 'true' }, cookie))).status, 400);
+});
+
 test('partial edits retain multimedia and explicit removals clear document and fact-check data', async () => {
   const cookie = await signedCookie();
   const current = await db.getAllData();

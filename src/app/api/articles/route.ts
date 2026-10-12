@@ -21,10 +21,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const user = await requireAdmin(request);
-    const input = articleInput(await readJson(request));
+    const { autoSlug, ...input } = articleInput(await readJson(request));
     const [categories, authors] = await Promise.all([getCategories(), getAuthors()]);
     if (!categories.some(c => c.id === input.categoryId) || !authors.some(a => a.id === input.authorId)) throw new ApiError(400, 'Select a valid category and author.');
-    const article = await createArticle(input as Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>, user);
+    const article = await createArticle(input as Omit<Article, 'id' | 'publishedAt' | 'updatedAt' | 'readingTimeMinutes'>, user, { autoSlug });
     return json({ article }, 201);
   } catch (error) { return apiError(error); }
 }

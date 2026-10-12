@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -12,6 +12,7 @@ import {
 import { Category, Tag, Author, Article, ArticleStatus, Language, ArticleRevision } from '@/types';
 import { adminRequest } from '@/lib/admin-client';
 import { formatInline } from '@/lib/content-safety';
+import { slugifyHeadline } from '@/lib/article-slug';
 
 import { Suspense } from 'react';
 
@@ -19,6 +20,8 @@ function ArticleEditorContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
+  const savedArticleId = useRef<string | null>(editId);
+  const saveInFlight = useRef(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [tagsList, setTagsList] = useState<Tag[]>([]);
@@ -93,35 +96,7 @@ function ArticleEditorContent() {
 
   // Auto-slug generator supporting English and Telugu Unicode
   const generateSlug = (text: string) => {
-    if (!text) return `story-${Date.now().toString(36)}`;
-    const clean = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    if (!clean) return `story-${Date.now().toString(36)}`;
-
-    // Try English words first
-    const english = clean
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '')
-      .trim()
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-    if (english.length >= 3) {
-      return english.slice(0, 80);
-    }
-
-    // Preserve Telugu (\u0C00-\u0C7F) and English characters
-    const unicodeSlug = clean
-      .replace(/[^a-zA-Z0-9\u0C00-\u0C7F\s_-]/g, '')
-      .trim()
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 80);
-
-    if (unicodeSlug.length > 0) {
-      return unicodeSlug;
-    }
-
-    return `story-${Date.now().toString(36)}`;
+    return slugifyHeadline(text) || `story-${crypto.randomUUID()}`;
   };
 
   const handleHeadlineChange = (val: string) => {
@@ -140,6 +115,7 @@ function ArticleEditorContent() {
 
   // Load existing article if editing
   useEffect(() => {
+    savedArticleId.current = editId;
     setCatalogReady(false);
     setArticleReady(!editId);
     setAuthorId('');
@@ -344,11 +320,11 @@ function ArticleEditorContent() {
 
   // Tag helper with canonical alias mapping
   const addTag = (rawTag: string) => {
-    const clean = rawTag.toLowerCase().trim();
+    const clean = slugifyHeadline(rawTag);
     if (!clean) return;
 
     const matchedTag = tagsList.find(t => 
-      t.slug === clean || t.aliases.includes(clean)
+      t.slug === clean || t.aliases.some(alias => slugifyHeadline(alias) === clean)
     );
 
     const canonical = matchedTag ? (matchedTag.canonicalSlug || matchedTag.slug) : clean;
@@ -365,7 +341,7 @@ function ArticleEditorContent() {
 
   const handleSubmit = async (e?: React.FormEvent, forceStatus?: ArticleStatus) => {
     if (e) e.preventDefault();
-    if (!catalogReady || !articleReady || saving) return;
+    if (!catalogReady || !articleReady || saveInFlight.current) return;
     if (!(headline.trim() || headlineTe.trim()) || !(body.trim() || bodyTe.trim())) {
       setErrorMessage('Add a headline and story text before saving.');
       return;
@@ -374,6 +350,7 @@ function ArticleEditorContent() {
       setErrorMessage('Select an author for this article before saving or publishing.');
       return;
     }
+    saveInFlight.current = true;
     setSaving(true);
     setErrorMessage('');
 
@@ -401,6 +378,7 @@ function ArticleEditorContent() {
       headline: finalHeadline,
       headlineTe: finalHeadlineTe,
       slug: finalSlug,
+      autoSlug: !manualSlug,
       summary: finalSummary,
       summaryTe: finalSummaryTe,
       body: finalBody,
@@ -442,8 +420,9 @@ function ArticleEditorContent() {
     };
 
     try {
-      const url = editId ? `/api/articles/${editId}` : '/api/articles';
-      const method = editId ? 'PUT' : 'POST';
+      const currentId = savedArticleId.current;
+      const url = currentId ? `/api/articles/${currentId}` : '/api/articles';
+      const method = currentId ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method,
@@ -454,6 +433,11 @@ function ArticleEditorContent() {
       if (res.ok) {
         const responseData = await res.json();
         const savedArt = responseData.article;
+        if (!savedArt?.id) throw new Error('The server did not confirm the saved article.');
+        savedArticleId.current = savedArt.id;
+        setSlug(savedArt.slug);
+        setManualSlug(true);
+        setStatus(savedArt.status);
         const targetSlug = savedArt?.slug || finalSlug;
         const targetLang = savedArt?.language || language || 'te';
 
@@ -477,6 +461,7 @@ function ArticleEditorContent() {
       console.error(err);
       setErrorMessage('Error saving article. Please check inputs.');
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -687,7 +672,7 @@ function ArticleEditorContent() {
               <input
                 type="text"
                 value={headlineTe}
-                onChange={(e) => setHeadlineTe(e.target.value)}
+                onChange={(e) => handleHeadlineTeChange(e.target.value)}
                 placeholder="ప్రామాణిక పత్రికా భాషలో తెలుగు శీర్షిక..."
                 className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-base font-bold text-slate-900 font-telugu bg-white"
               />
@@ -699,7 +684,10 @@ function ArticleEditorContent() {
                 <span>Canonical URL Slug:</span>
                 <button
                   type="button"
-                  onClick={() => setManualSlug(!manualSlug)}
+                  onClick={() => {
+                    if (manualSlug) setSlug(generateSlug(headline || headlineTe));
+                    setManualSlug(!manualSlug);
+                  }}
                   className="text-brand-orange hover:underline text-[10px]"
                 >
                   {manualSlug ? 'Auto-generate from title' : 'Customize manually'}
@@ -711,6 +699,7 @@ function ArticleEditorContent() {
                 </span>
                 <input
                   type="text"
+                  aria-label="Article URL slug"
                   value={slug}
                   onChange={(e) => {
                     setSlug(e.target.value);
