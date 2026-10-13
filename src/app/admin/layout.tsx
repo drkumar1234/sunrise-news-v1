@@ -55,6 +55,7 @@ export default function AdminLayout({
     { label: 'Tags & Canonical', href: '/admin/tags', icon: Tags },
     { label: 'Breaking Ticker', href: '/admin/ticker', icon: Radio },
     { label: 'Ad Campaigns', href: '/admin/ads', icon: Megaphone },
+    { label: 'Editors & Reporters', href: '/admin/staff', icon: Users },
     { label: 'Newsletter', href: '/admin/newsletter', icon: Users },
     { label: 'Audit Trail', href: '/admin/audit-logs', icon: HistoryIcon },
     { label: 'Website Settings', href: '/admin/settings', icon: Settings },

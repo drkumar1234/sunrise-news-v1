@@ -28,6 +28,9 @@ const search = require('../src/app/api/search/route.ts');
 const catalog = require('../src/app/api/catalog/route.ts');
 const epapers = require('../src/app/api/admin/epapers/route.ts');
 const publicEpapers = require('../src/app/api/epapers/route.ts');
+const staff = require('../src/app/api/admin/staff/route.ts');
+const staffMember = require('../src/app/api/admin/staff/[id]/route.ts');
+const staffUpload = require('../src/app/api/admin/staff/upload/route.ts');
 const media = require('../src/app/api/media/[key]/route.ts');
 const origin = 'https://sunrise.example';
 let dataDirectory, oldEnvironment;
@@ -39,6 +42,45 @@ const request = (method = 'GET', pathname = '/api/articles', data, cookie, suppl
   ...(data === undefined ? {} : { body: JSON.stringify(data) }),
 });
 const signedCookie = async () => `${auth.SESSION_COOKIE}=${await auth.createSession()}`;
+
+test('staff enrollment validates records, persists edits and removal, and requires administrator access', async () => {
+  assert.equal((await staff.GET(request('GET', '/api/admin/staff'))).status, 401);
+  const cookie = await signedCookie();
+  const input = { name: 'Test Reporter', idNumber: 'SN-001', age: 30, fatherName: 'Test Father', designation: 'Reporter', experience: '5 years', accreditationNumber: '', dateOfJoining: '2026-10-13', photoUrl: '', joiningLetterUrl: '' };
+  const create = data => staff.POST(request('POST', '/api/admin/staff', data, cookie));
+  assert.equal((await create({ ...input, age: 12 })).status, 400);
+  assert.equal((await create({ ...input, dateOfJoining: '2026-02-30' })).status, 400);
+  assert.equal((await create({ ...input, joiningLetterUrl: 'https://example.com/file.pdf' })).status, 400);
+  assert.equal((await staff.POST(request('POST', '/api/admin/staff', input, cookie, 'https://evil.example'))).status, 403);
+  const response = await create(input);
+  assert.equal(response.status, 201);
+  const { member } = await response.json();
+  assert.equal((await create(input)).status, 409);
+  assert.equal((await staffMember.PUT(request('PUT', '/api/admin/staff/' + member.id, { ...input, designation: 'Editor' }, cookie), context(member.id))).status, 200);
+  const list = await (await staff.GET(request('GET', '/api/admin/staff', undefined, cookie))).json();
+  assert.equal(list.staff[0].designation, 'Editor');
+  assert.equal((await staffMember.DELETE(request('DELETE', '/api/admin/staff/' + member.id, undefined, cookie), context(member.id))).status, 200);
+  assert.equal((await (await staff.GET(request('GET', '/api/admin/staff', undefined, cookie))).json()).staff.length, 0);
+});
+
+test('staff uploads restrict file formats and remain private even if referenced by a published article', async () => {
+  const cookie = await signedCookie();
+  const upload = (name, contents, kind, authenticated = true) => {
+    const body = new FormData(); body.set('kind', kind); body.set('file', new File([contents], name));
+    return staffUpload.POST(new Request(origin + '/api/admin/staff/upload', { method: 'POST', headers: { origin, ...(authenticated ? { cookie } : {}) }, body }));
+  };
+  assert.equal((await upload('letter.pdf', '%PDF-1.4 test', 'letter', false)).status, 401);
+  assert.equal((await upload('letter.txt', 'text', 'letter')).status, 400);
+  assert.equal((await upload('photo.jpg', 'not an image', 'photo')).status, 400);
+  const response = await upload('letter.pdf', '%PDF-1.4 test', 'letter');
+  assert.equal(response.status, 201);
+  const file = await response.json();
+  const existing = (await db.getArticles({ status: 'published' })).articles[0];
+  await db.updateArticle(existing.id, { featuredImage: file.url }, { id: 'test', name: 'Test' });
+  const mediaContext = { params: Promise.resolve({ key: file.key }) };
+  assert.equal((await media.GET(new Request(origin + file.url), mediaContext)).status, 404);
+  assert.equal((await media.GET(new Request(origin + file.url, { headers: { cookie } }), mediaContext)).status, 200);
+});
 
 beforeEach(async () => {
   oldEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));
