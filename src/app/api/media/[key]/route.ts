@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (!referenced) return new NextResponse(null, { status: 404 });
     }
     const media = await readMedia(key);
-    if (!media) return new NextResponse(null, { status: 404 });
+    if (!media || (media.metadata.private && !admin)) return new NextResponse(null, { status: 404 });
     const isImage = media.metadata.contentType.startsWith('image/');
     const inline = isImage || (media.metadata.contentType === 'application/pdf' && new URL(request.url).searchParams.get('view') === '1');
     return new NextResponse(media.data, { headers: {

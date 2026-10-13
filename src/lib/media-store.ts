@@ -10,7 +10,7 @@ const TYPES: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
 };
-export interface MediaMetadata { name: string; contentType: string; size: number }
+export interface MediaMetadata { name: string; contentType: string; size: number; private?: boolean }
 
 export function validateUpload(name: string, data: Buffer): { extension: string; contentType: string } {
   const extension = path.extname(name).toLowerCase();
@@ -30,10 +30,10 @@ export function validateUpload(name: string, data: Buffer): { extension: string;
 
 function localDirectory() { return path.join(process.env.SUNRISE_DATA_DIR || path.join(process.cwd(), 'data'), 'media'); }
 
-export async function saveMedia(name: string, data: Buffer) {
+export async function saveMedia(name: string, data: Buffer, privateFile = false) {
   const { extension, contentType } = validateUpload(name, data);
   const key = `${randomUUID()}${extension}`;
-  const metadata: MediaMetadata = { name: path.basename(name).slice(0,180), contentType, size: data.length };
+  const metadata: MediaMetadata = { name: path.basename(name).slice(0,180), contentType, size: data.length, ...(privateFile ? { private: true } : {}) };
   if (process.env.SUNRISE_STORAGE === 'netlify') {
     const result = await (await getCMSStore('sunrise-media')).set(key, new Uint8Array(data).buffer, { metadata: { ...metadata }, onlyIfNew: true });
     if (!result.modified || !result.etag?.trim()) throw new Error('Upload could not be saved. Please retry.');
