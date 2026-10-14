@@ -57,9 +57,13 @@ test('built Cloudflare CMS supports owner navigation, employee revocation and pe
     assert.equal(await (await request(uploaded.file.url, 'GET', undefined, cookie)).text(), 'Sunrise runtime story\nCloudflare upload persistence');
     assert.equal((await request('/api/admin/employees', 'DELETE', { id: employee.id }, cookie)).status, 200);
     assert.equal((await request('/api/auth/session', 'GET', undefined, employeeCookie)).status, 401);
-    const migrationStatus = await (await request('/api/admin/migration', 'GET', undefined, cookie)).json();
+    const migrationStatusResponse = await request('/api/admin/migration', 'GET', undefined, cookie);
+    assert.equal(migrationStatusResponse.status, 200, await migrationStatusResponse.clone().text());
+    const migrationStatus = await migrationStatusResponse.json();
     assert.equal((await request('/api/admin/migration')).status, 401);
-    const exported = await (await request('/api/admin/migration?export=1', 'GET', undefined, cookie)).json();
+    const exportResponse = await request('/api/admin/migration?export=1', 'GET', undefined, cookie);
+    assert.equal(exportResponse.status, 200, await exportResponse.clone().text());
+    const exported = await exportResponse.json();
     const { createHash } = require('node:crypto');
     const originalBytes = Buffer.from('Sunrise runtime story\nCloudflare upload persistence');
     const originalKey = uploaded.file.url.split('/').pop();

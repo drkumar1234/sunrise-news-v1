@@ -11,9 +11,9 @@ export const runtime = 'nodejs';
 const emptyRegistry = () => ({ employees: [] as Employee[] });
 
 async function state() {
-  await getAllData();
+  const initialDatabase = await getAllData();
   const [database, registry] = await Promise.all([
-    readJSON<Record<string, unknown>>('sunrise-cms', 'database-v1', () => ({})),
+    readJSON<Record<string, unknown>>('sunrise-cms', 'database-v1', () => initialDatabase as unknown as Record<string, unknown>),
     readJSON('sunrise-auth', 'employees-v1', emptyRegistry),
   ]);
   return { database, registry };
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       current.employees = backup.employees;
     });
     try {
-      await mutateJSON<Record<string, unknown>, void>('sunrise-cms', 'database-v1', () => ({}), current => {
+      await mutateJSON<Record<string, unknown>, void>('sunrise-cms', 'database-v1', () => before.database, current => {
         if (fingerprint(current) !== expectedHash) throw new ApiError(409, 'Destination database changed during import.');
         for (const key of Object.keys(current)) delete current[key];
         Object.assign(current, backup.database);
