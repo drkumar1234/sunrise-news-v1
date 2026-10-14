@@ -9,7 +9,11 @@
   "durable_objects": { "bindings": [{ "name": "CMS_DATA", "class_name": "CMSData" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CMSData"] }],
   "vars": { "SUNRISE_STORAGE": "cloudflare" },
-  "previews": {},
+  "preview_urls": true,
+  "previews": {
+    "vars": { "SUNRISE_STORAGE": "cloudflare" },
+    "durable_objects": { "bindings": [{ "name": "CMS_DATA", "class_name": "CMSData" }] }
+  },
   "build": { "command": "npm run build:cloudflare" },
   "observability": { "enabled": true }
 }
