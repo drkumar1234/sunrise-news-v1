@@ -12,7 +12,6 @@ import { DashedClipIcon } from '@/components/clipper/DashedClipIcon';
 import { NewsClipperModal } from '@/components/clipper/NewsClipperModal';
 import { Article, Language } from '@/types';
 import { getSiteUrl } from '@/lib/site-url';
-import { DailyEpaperArchive } from '@/components/epaper/DailyEpaperArchive';
 
 export default function EPaperPage() {
   const params = useParams<{ lang: string }>();
@@ -87,7 +86,6 @@ export default function EPaperPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
-      <DailyEpaperArchive lang={lang} />
       {loadError && <p role="alert" className="p-4 bg-red-950 text-white">{isTelugu ? 'వార్తలు లోడ్ కాలేదు. మళ్లీ ప్రయత్నించండి.' : 'Articles could not be loaded. Please refresh to try again.'}</p>}
       {loading && <p role="status" className="p-4">{isTelugu ? 'వార్తలు లోడ్ అవుతున్నాయి...' : 'Loading published stories...'}</p>}
       {!loading && !loadError && articles.length === 0 && <p className="p-4">{isTelugu ? 'ప్రచురిత వార్తలు ఇంకా లేవు.' : 'No published stories are available yet.'}</p>}

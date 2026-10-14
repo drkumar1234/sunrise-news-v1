@@ -11,7 +11,7 @@ English and Telugu news website with a private newsroom CMS, built with Next.js,
 - Private subscriber list and audit history. Newsletter signup records subscriptions; sending email editions requires a separate email delivery service.
 - Published articles appear in public pages, search and XML sitemaps. Drafts, private notes, revisions and unreferenced uploads require administrator access.
 
-This deployment has one owner account. Author bylines are editorial records, not additional login accounts. Comments and online contact submissions are unavailable; the contact page provides the configured newsroom contact details. The e-paper view presents published web stories.
+The owner can enroll employees at `/admin/employees` with a name, email and password of at least 12 characters. Employees sign in at `/admin/login` with Editor access to the existing CMS tools (including publishing, uploads, website settings and subscriber records). Only the owner can view the employee directory, enroll employees or remove access. Employee passwords use salted scrypt hashes in private persistent storage. Removal revokes existing employee sessions and retains articles and historical records; re-enrollment creates a new account without restoring old sessions. Author bylines remain separate editorial records. Comments and online contact submissions are unavailable; the contact page provides the configured newsroom contact details. The e-paper view presents published web stories.
 
 ## Local development
 

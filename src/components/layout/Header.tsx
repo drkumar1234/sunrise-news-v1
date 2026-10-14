@@ -77,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, categories }) => {
   };
 
   // Filter top navigation categories
-  const mainNav = categories.filter(c => !c.parentId && c.slug !== 'e-paper-daily-pdf').slice(0, 9);
+  const mainNav = categories.filter(c => !c.parentId).slice(0, 9);
 
   return (
     <header className="w-full bg-white border-b border-slate-200 relative z-30">
@@ -345,7 +345,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, categories }) => {
                 }`}
               >
                 <DashedClipIcon className="w-3.5 h-3.5 text-amber-400" />
-                <span>{lang === 'te' ? 'ఈ-పేపర్ రోజువారీ PDF' : 'E-paper Daily PDF'}</span>
+                <span>{lang === 'te' ? 'ఈ-పేపర్' : 'E-Paper'}</span>
               </Link>
             </li>
           </ul>

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { cache } from 'react';
 import type {
   Article, Category, Tag, Author, AdPlacement, EditorialSettings, AuditLog,
-  ArticleRevision, NewsletterSubscriber, Language, ArticleStatus, UserRole, EpaperEdition,
+  ArticleRevision, NewsletterSubscriber, Language, ArticleStatus, UserRole,
 } from '@/types';
 import {
   initialArticles, initialCategories, initialTags, initialAuthors,
@@ -13,7 +13,6 @@ import importedData from '../../data/sunrise_news.json';
 import { mutateJSON, readJSON } from './storage';
 import { AUTHOR_ROSTER_VERSION, installNewsroomAuthors } from './author-profiles';
 import { slugifyHeadline } from './article-slug';
-import { EPAPER_CATEGORY } from './epaper';
 
 type StoredRevision = ArticleRevision & { headlineTe?: string; summaryTe?: string; bodyTe?: string };
 export interface DatabaseSchema {
@@ -27,8 +26,6 @@ export interface DatabaseSchema {
   auditLogs: AuditLog[];
   revisions: StoredRevision[];
   subscribers: NewsletterSubscriber[];
-  epapers: EpaperEdition[];
-  epaperVersion?: number;
 }
 
 type Editor = { id: string; name: string; role?: UserRole };
@@ -71,11 +68,7 @@ function normalizeDatabase(value: unknown): DatabaseSchema {
   };
   return {
     articles: array(db.articles, initialArticles).map(normalizeArticle),
-    categories: (db.epaperVersion || 0) < 1 && !array(db.categories, initialCategories).some(category => category.slug === EPAPER_CATEGORY.slug)
-      ? [...array(db.categories, initialCategories), structuredClone(EPAPER_CATEGORY)]
-      : array(db.categories, initialCategories),
-    epapers: array(db.epapers, []),
-    epaperVersion: Math.max(db.epaperVersion || 0, 1),
+    categories: array(db.categories, initialCategories),
     tags: array(db.tags, initialTags).map(tag => ({ ...tag, aliases: Array.isArray(tag.aliases) ? tag.aliases : [] })),
     authors: (db.authorRosterVersion || 0) < AUTHOR_ROSTER_VERSION
       ? installNewsroomAuthors(array(db.authors, initialAuthors))
@@ -94,8 +87,8 @@ const seedDatabase = (): DatabaseSchema => normalizeDatabase(structuredClone(imp
 // cache. Route handlers (including mutations) read storage afresh on each call.
 const loadDB = async (): Promise<DatabaseSchema> => {
   const stored = await readJSON<DatabaseSchema>(STORE, KEY, seedDatabase);
-  if ((stored.authorRosterVersion || 0) >= AUTHOR_ROSTER_VERSION && (stored.epaperVersion || 0) >= 1) return normalizeDatabase(stored);
-  // Apply roster and E-paper migrations to live storage with the same CAS
+  if ((stored.authorRosterVersion || 0) >= AUTHOR_ROSTER_VERSION) return normalizeDatabase(stored);
+  // Apply the one-time roster replacement to live storage with the same CAS
   // transaction used by editorial saves. Never overwrite newer cloud articles
   // with the bundled seed, or assign a real byline to an old sample attribution.
   return mutateJSON<DatabaseSchema, DatabaseSchema>(STORE, KEY, seedDatabase, current => {
@@ -116,32 +109,6 @@ async function changeDB<R>(change: (db: DatabaseSchema) => R): Promise<R> {
 
 /** Server-only snapshot for authenticated administrative exports. */
 export async function getAllData(): Promise<DatabaseSchema> { return getDB(); }
-
-export async function getEpaperEditions(includePrivate = false): Promise<EpaperEdition[]> {
-  return [...(await getDB()).epapers]
-    .filter(edition => includePrivate || edition.status === 'published')
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-}
-
-export async function createEpaperEdition(input: Omit<EpaperEdition, 'id' | 'createdAt' | 'updatedAt'>, user: Editor): Promise<EpaperEdition> {
-  const now = new Date().toISOString();
-  const saved: EpaperEdition = { ...input, id: `epaper-${randomUUID()}`, createdAt: now, updatedAt: now };
-  return changeDB(db => {
-    db.epapers.unshift(saved);
-    audit(db, user, saved.status === 'published' ? 'publish' : 'create', 'epaper', saved.id, saved.title, `${saved.date} • ${saved.edition}`);
-    return saved;
-  });
-}
-
-export async function setEpaperStatus(id: string, status: EpaperEdition['status'], user: Editor): Promise<EpaperEdition> {
-  return changeDB(db => {
-    const saved = db.epapers.find(edition => edition.id === id);
-    if (!saved) throw new DatabaseValidationError('E-paper edition not found.', 404);
-    saved.status = status; saved.updatedAt = new Date().toISOString();
-    audit(db, user, status === 'published' ? 'publish' : status === 'archived' ? 'archive' : 'update', 'epaper', id, saved.title, `E-paper status: ${status}`);
-    return saved;
-  });
-}
 
 export interface GetArticlesOptions {
   language?: Language;

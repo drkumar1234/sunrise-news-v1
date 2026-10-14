@@ -56,6 +56,7 @@ export default function AdminLayout({
     { label: 'Breaking Ticker', href: '/admin/ticker', icon: Radio },
     { label: 'Ad Campaigns', href: '/admin/ads', icon: Megaphone },
     { label: 'Newsletter', href: '/admin/newsletter', icon: Users },
+    ...(user.role === 'super_admin' ? [{ label: 'Employees', href: '/admin/employees', icon: Users }] : []),
     { label: 'Audit Trail', href: '/admin/audit-logs', icon: HistoryIcon },
     { label: 'Website Settings', href: '/admin/settings', icon: Settings },
   ];
