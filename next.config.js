@@ -5,19 +5,7 @@ const nextConfig = {
   reactStrictMode: true,
   distDir: process.env.NEXT_BUILD_DIR || '.next',
   cleanDistDir: !process.env.NEXT_BUILD_DIR,
-  serverExternalPackages: ['pdf-parse', '@napi-rs/canvas', 'mammoth'],
-  outputFileTracingIncludes: {
-    '/api/admin/upload-doc': [
-      // PDF.js loads its worker and canvas bindings dynamically, beyond NFT's trace.
-      './node_modules/pdf-parse/dist/pdf-parse/cjs/**/*',
-      './node_modules/pdf-parse/dist/pdf-parse/esm/**/*',
-      './node_modules/pdf-parse/package.json',
-      './node_modules/pdfjs-dist/legacy/build/*.mjs',
-      './node_modules/pdfjs-dist/package.json',
-      './node_modules/@napi-rs/canvas/**/*',
-      './node_modules/@napi-rs/canvas-*/**/*',
-    ],
-  },
+  serverExternalPackages: ['mammoth'],
   images: {
     unoptimized: true,
     domains: ["images.unsplash.com", "via.placeholder.com"],

@@ -48,11 +48,13 @@ export async function POST(request: NextRequest) {
     // 2. Process PDF Document (.pdf)
     else if (extension === '.pdf') {
       try {
-        // Keep PDF.js and its native canvas module out of ordinary request startup.
-        const { PDFParse } = await import('pdf-parse');
-        const parser = new PDFParse({ data: buffer });
-        try { const pdfData = await parser.getText(); extractedText = pdfData.text || ''; }
-        finally { await parser.destroy(); }
+        const { extractText, getDocumentProxy } = await import('unpdf');
+        const document = await getDocumentProxy(new Uint8Array(buffer));
+        try {
+          if (document.numPages > 100) throw new Error('Automatic extraction is limited to 100 pages.');
+          const result = await extractText(document, { mergePages: true });
+          extractedText = result.text;
+        } finally { await document.loadingTask.destroy(); }
       } catch (pdfErr) {
         console.error('Error parsing PDF:', pdfErr);
         extractionWarning = 'The file was saved, but its text could not be extracted. Enter article text manually.';

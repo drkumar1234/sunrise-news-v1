@@ -133,7 +133,9 @@ export async function authenticate(request: Request, email: string, password: st
   requireSameOrigin(request);
   const config = await configuration();
   // Netlify supplies this header at its edge. Unknown clients share a bucket.
-  const address = usesNetlifyStorage() ? (request.headers.get('x-nf-client-connection-ip') || 'unknown') : 'local';
+  const address = process.env.SUNRISE_STORAGE === 'cloudflare'
+    ? (request.headers.get('cf-connecting-ip') || 'unknown')
+    : usesNetlifyStorage() ? (request.headers.get('x-nf-client-connection-ip') || 'unknown') : 'local';
   const key = createHmac('sha256', config.secret).update(address).digest('hex');
   if (!(await consumeRateLimit(`login-ip-${key}`, 8, 15 * 60_000))
     || !(await consumeRateLimit('login-global', 60, 60 * 60_000))) {

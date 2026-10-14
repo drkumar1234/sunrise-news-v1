@@ -8,33 +8,43 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "test": "node --test tests/*.test.cjs",
-    "typecheck": "tsc --noEmit --incremental false"
+    "typecheck": "tsc --noEmit --incremental false",
+    "build:cloudflare": "opennextjs-cloudflare build",
+    "preview:cloudflare": "opennextjs-cloudflare preview",
+    "deploy:cloudflare": "opennextjs-cloudflare deploy",
+    "test:cloudflare": "node --test tests/cloudflare-runtime.cjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.4",
+    "@opennextjs/cloudflare": "^1.20.11",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.475.0",
     "mammoth": "^1.13.0",
     "next": "^15.5.27",
-    "pdf-parse": "^2.4.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@types/node": "20.17.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",
+    "miniflare": "^5.20261012.0-beta",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "wrangler": "^4.151.0"
   },
   "overrides": {
     "next": {
       "postcss": "8.5.29"
+    },
+    "@node-minify/core": {
+      "glob": "^10.5.0"
     }
   }
 }

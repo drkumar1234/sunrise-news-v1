@@ -41,7 +41,19 @@ npm run build
 npm start
 ```
 
-## Netlify deployment
+## Cloudflare Workers deployment
+
+The Cloudflare target uses the OpenNext adapter and a private SQLite-backed Durable Object binding named `CMS_DATA`. Articles, account hashes, signing keys, login limits and media persist across deployments. Conditional writes are transactional; files are chunked internally to support the existing 4 MB upload limit. No public storage endpoint is exposed. This storage layout is intended for a small newsroom.
+
+Cloudflare Workers Builds can run `npm run build:cloudflare` as the build command and `npm run deploy:cloudflare` as the production deploy command. Pull request previews use `npx wrangler preview`; `wrangler.jsonc` includes its required `previews` configuration and a custom build command. Use Node.js 22. Run `npm run test:cloudflare` to check storage in the actual Worker runtime, and `npm run preview:cloudflare` after building for local Worker previews.
+
+Set `ADMIN_EMAIL` and secret `ADMIN_PASSWORD` (at least 12 characters) on the Worker before using the CMS. Set `NEXT_PUBLIC_SITE_URL` to the intended Cloudflare site URL in the build environment. `SUNRISE_STORAGE=cloudflare` is configured in Wrangler; do not override it with `local` or `netlify` on this target. Preview resources must remain isolated from production accounts and content. The CMS fails closed when owner credentials are missing.
+
+Deploying this code does not copy the current Netlify Blobs data. Before a production cutover, back up and transfer the live database, employee registry, signing key and media from Netlify, verify article counts and uploaded editions, and sign in with both an owner and an employee. Keep Netlify serving production until that transfer and the Cloudflare preview checks are complete. Do not replace live data with the tracked seed snapshot.
+
+PDF text extraction uses the serverless `unpdf` parser without native canvas modules. Automatic extraction is limited to 100 pages; larger or scanned PDFs can still be uploaded and their article text entered manually.
+
+## Netlify deployment (existing host)
 
 Import this GitHub repository into Netlify. `netlify.toml` sets the build command, publish directory and Node version. Netlify's Next.js adapter provides the server runtime.
 
