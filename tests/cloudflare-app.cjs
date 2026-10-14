@@ -57,6 +57,33 @@ test('built Cloudflare CMS supports owner navigation, employee revocation and pe
     assert.equal(await (await request(uploaded.file.url, 'GET', undefined, cookie)).text(), 'Sunrise runtime story\nCloudflare upload persistence');
     assert.equal((await request('/api/admin/employees', 'DELETE', { id: employee.id }, cookie)).status, 200);
     assert.equal((await request('/api/auth/session', 'GET', undefined, employeeCookie)).status, 401);
+    const migrationStatus = await (await request('/api/admin/migration', 'GET', undefined, cookie)).json();
+    assert.equal((await request('/api/admin/migration')).status, 401);
+    const exported = await (await request('/api/admin/migration?export=1', 'GET', undefined, cookie)).json();
+    const { createHash } = require('node:crypto');
+    const originalBytes = Buffer.from('Sunrise runtime story\nCloudflare upload persistence');
+    const originalKey = uploaded.file.url.split('/').pop();
+    const sourceHash = createHash('sha256').update(originalBytes).digest('hex');
+    const metadata = { name: 'story.txt', contentType: 'text/plain; charset=utf-8', size: originalBytes.length };
+    const migrationUpload = new FormData();
+    migrationUpload.set('kind', 'media'); migrationUpload.set('file', new File([originalBytes], originalKey)); migrationUpload.set('key', originalKey); migrationUpload.set('metadata', JSON.stringify(metadata)); migrationUpload.set('sha256', sourceHash);
+    const verified = await fetch(origin + '/api/admin/migration', { method: 'POST', body: migrationUpload, headers: { origin, cookie } });
+    assert.equal(verified.status, 200, await verified.clone().text());
+    exported.database.articles[0].headline = 'Imported newsroom headline';
+    const migrationBackup = { format: 'sunrise-netlify-backup-v1', database: exported.database, employees: exported.registry.employees, media: [{ key: originalKey, metadata, sha256: sourceHash }] };
+    async function importSnapshot(expectedHash) {
+      const payload = new FormData(); payload.set('kind', 'database'); payload.set('file', new File([JSON.stringify(migrationBackup)], 'backup.json')); payload.set('expectedHash', expectedHash); payload.set('expectedEmployeesHash', migrationStatus.employeesHash);
+      return fetch(origin + '/api/admin/migration', { method: 'POST', body: payload, headers: { origin, cookie } });
+    }
+    assert.equal((await importSnapshot('changed-destination')).status, 409);
+    const imported = await importSnapshot(migrationStatus.databaseHash);
+    assert.equal(imported.status, 200, await imported.clone().text());
+    const result = await imported.json();
+    assert.equal(result.databaseHash, result.sourceDatabaseHash);
+    assert.equal(result.verifiedMedia, 1);
+    const destinationBackup = await (await request('/api/admin/migration?backup=' + result.backupId, 'GET', undefined, cookie)).json();
+    assert.notEqual(destinationBackup.backup.database.articles[0].headline, 'Imported newsroom headline');
+    assert.equal((await (await request('/api/admin/migration?export=1', 'GET', undefined, cookie)).json()).database.articles[0].headline, 'Imported newsroom headline');
   } catch (error) {
     process.stderr.write(output);
     throw error;
