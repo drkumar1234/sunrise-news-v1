@@ -2,8 +2,9 @@ import 'server-only';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { consumeRateLimit, readJSON, mutateJSON, StorageConflictError, usesNetlifyStorage } from './storage';
+import { authenticateEmployee, employeeRecords } from './employees';
 
-export type AdminUser = { id: string; name: string; role: 'super_admin' };
+export type AdminUser = { id: string; name: string; role: 'super_admin' | 'editor' };
 export const SESSION_COOKIE = 'sunrise_admin';
 export const SESSION_SECONDS = 8 * 60 * 60;
 
@@ -61,11 +62,13 @@ function owner(): AdminUser {
   return { id: 'site-owner', name: 'Sunrise News Owner', role: 'super_admin' };
 }
 
-export async function createSession(now = Date.now()) {
+export async function createSession(now = Date.now(), user: AdminUser = owner()) {
   const { email, password, secret } = await configuration();
+  const employee = user.id === 'site-owner' ? null : (await employeeRecords()).find(item => item.id === user.id && !item.removedAt);
+  if (user.id !== 'site-owner' && !employee) throw new ApiError(401, 'Employee access has been removed.');
   const payload = Buffer.from(JSON.stringify({
-    sub: 'site-owner', iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + SESSION_SECONDS,
-    version: credentialVersion(email, password, secret),
+    sub: user.id, iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + SESSION_SECONDS,
+    version: employee ? credentialVersion(employee.email, employee.passwordHash, secret) : credentialVersion(email, password, secret),
   })).toString('base64url');
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
@@ -80,10 +83,13 @@ export async function verifySession(token: string, now = Date.now()): Promise<Ad
   try {
     const claims = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
     const seconds = Math.floor(now / 1000);
-    if (claims.sub !== 'site-owner' || !Number.isInteger(claims.exp) || !Number.isInteger(claims.iat)
+    if (!Number.isInteger(claims.exp) || !Number.isInteger(claims.iat)
       || claims.exp <= seconds || claims.iat > seconds + 30 || claims.exp - claims.iat !== SESSION_SECONDS
-      || !equal(String(claims.version), credentialVersion(email, password, secret))) return null;
-    return owner();
+      ) return null;
+    if (claims.sub === 'site-owner') return equal(String(claims.version), credentialVersion(email, password, secret)) ? owner() : null;
+    const employee = (await employeeRecords()).find(item => item.id === claims.sub && !item.removedAt);
+    if (!employee || !equal(String(claims.version), credentialVersion(employee.email, employee.passwordHash, secret))) return null;
+    return { id: employee.id, name: employee.name, role: employee.role };
   } catch { return null; }
 }
 
@@ -117,11 +123,19 @@ export function sessionCookieOptions() {
   return { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' as const, path: '/', maxAge: SESSION_SECONDS };
 }
 
+export async function requireOwner(request: Request) {
+  const user = await requireAdmin(request);
+  if (user.role !== 'super_admin') throw new ApiError(403, 'Only the site owner can manage employees.');
+  return user;
+}
+
 export async function authenticate(request: Request, email: string, password: string) {
   requireSameOrigin(request);
   const config = await configuration();
   // Netlify supplies this header at its edge. Unknown clients share a bucket.
-  const address = usesNetlifyStorage() ? (request.headers.get('x-nf-client-connection-ip') || 'unknown') : 'local';
+  const address = process.env.SUNRISE_STORAGE === 'cloudflare'
+    ? (request.headers.get('cf-connecting-ip') || 'unknown')
+    : usesNetlifyStorage() ? (request.headers.get('x-nf-client-connection-ip') || 'unknown') : 'local';
   const key = createHmac('sha256', config.secret).update(address).digest('hex');
   if (!(await consumeRateLimit(`login-ip-${key}`, 8, 15 * 60_000))
     || !(await consumeRateLimit('login-global', 60, 60 * 60_000))) {
@@ -129,6 +143,8 @@ export async function authenticate(request: Request, email: string, password: st
   }
   const emailMatches = equal(email.trim().toLowerCase(), config.email);
   const passwordMatches = equal(password, config.password);
-  if (!emailMatches || !passwordMatches) throw new ApiError(401, 'Email or password is incorrect.');
-  return owner();
+  if (emailMatches && passwordMatches) return owner();
+  const employee = await authenticateEmployee(email, password);
+  if (!employee || emailMatches) throw new ApiError(401, 'Email or password is incorrect.');
+  return { id: employee.id, name: employee.name, role: employee.role } satisfies AdminUser;
 }

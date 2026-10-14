@@ -34,7 +34,10 @@ export async function saveMedia(name: string, data: Buffer) {
   const { extension, contentType } = validateUpload(name, data);
   const key = `${randomUUID()}${extension}`;
   const metadata: MediaMetadata = { name: path.basename(name).slice(0,180), contentType, size: data.length };
-  if (process.env.SUNRISE_STORAGE === 'netlify') {
+  if (process.env.SUNRISE_STORAGE === 'cloudflare') {
+    const { saveCloudflareMedia } = await import('./cloudflare-store');
+    await saveCloudflareMedia(key, new Uint8Array(data).buffer, metadata);
+  } else if (process.env.SUNRISE_STORAGE === 'netlify') {
     const result = await (await getCMSStore('sunrise-media')).set(key, new Uint8Array(data).buffer, { metadata: { ...metadata }, onlyIfNew: true });
     if (!result.modified || !result.etag?.trim()) throw new Error('Upload could not be saved. Please retry.');
   } else {
@@ -47,6 +50,10 @@ export async function saveMedia(name: string, data: Buffer) {
 
 export async function readMedia(key: string): Promise<{ data: ArrayBuffer; metadata: MediaMetadata } | null> {
   if (!/^[0-9a-f-]{36}\.(pdf|docx|txt|md|jpe?g|png|webp)$/.test(key)) return null;
+  if (process.env.SUNRISE_STORAGE === 'cloudflare') {
+    const { readCloudflareMedia } = await import('./cloudflare-store');
+    return readCloudflareMedia(key);
+  }
   if (process.env.SUNRISE_STORAGE === 'netlify') {
     const result = await (await getCMSStore('sunrise-media')).getWithMetadata(key, { type: 'arrayBuffer' });
     return result ? { data: result.data, metadata: result.metadata as unknown as MediaMetadata } : null;

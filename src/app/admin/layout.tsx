@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  LayoutDashboard, FileText, PlusCircle, FolderTree, 
-  Tags, Radio, Megaphone, Users, History as HistoryIcon, Settings, 
-  LogOut, ExternalLink, ShieldAlert, ShieldCheck, Menu, X 
+import {
+  LayoutDashboard, FileText, PlusCircle, FolderTree,
+  Tags, Radio, Megaphone, Users, History as HistoryIcon, Settings,
+  LogOut, ExternalLink, ShieldAlert, ShieldCheck, Menu, X
 } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 import { adminRequest } from '@/lib/admin-client';
@@ -48,6 +48,7 @@ export default function AdminLayout({
 
   const navItems = [
     { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    ...(user.role === 'super_admin' ? [{ label: 'Employees', href: '/admin/employees', icon: Users }] : []),
     { label: 'All Articles', href: '/admin/articles', icon: FileText },
     { label: 'Write Story', href: '/admin/articles/editor', icon: PlusCircle, highlight: true },
     { label: 'E-paper Daily PDF', href: '/admin/epapers', icon: FileText },
@@ -61,12 +62,15 @@ export default function AdminLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row text-slate-900">
+    <div className="min-h-screen md:h-dvh md:overflow-hidden bg-slate-100 flex flex-col md:flex-row text-slate-900">
       {/* Mobile top bar */}
       <div className="md:hidden bg-brand-navy text-white p-4 flex items-center justify-between shadow">
         <Logo variant="light" size="sm" />
         <button
           type="button"
+          aria-label={mobileNavOpen ? 'Close newsroom menu' : 'Open newsroom menu'}
+          aria-expanded={mobileNavOpen}
+          aria-controls="newsroom-sidebar"
           onClick={() => setMobileNavOpen(!mobileNavOpen)}
           className="p-1.5 rounded-lg hover:bg-slate-800"
         >
@@ -76,7 +80,8 @@ export default function AdminLayout({
 
       {/* Sidebar Navigation */}
       <aside
-        className={`w-full md:w-64 bg-brand-navy-dark text-white flex-shrink-0 flex flex-col justify-between p-4 ${
+        id="newsroom-sidebar"
+        className={`w-full md:w-64 md:h-full md:overflow-y-auto bg-brand-navy-dark text-white flex-shrink-0 flex flex-col justify-between gap-6 p-4 ${
           mobileNavOpen ? 'block' : 'hidden md:flex'
         }`}
       >
@@ -90,7 +95,7 @@ export default function AdminLayout({
           </div>
 
           {/* Navigation Links */}
-          <nav className="space-y-1">
+          <nav aria-label="Newsroom navigation" className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -98,6 +103,7 @@ export default function AdminLayout({
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={() => setMobileNavOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                     isActive
@@ -154,8 +160,8 @@ export default function AdminLayout({
       {/* Main Administrative Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Top bar with quick shortcuts */}
-        <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
+        <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-500 font-semibold">Newsroom Management:</span>
             <span className="text-xs font-bold text-brand-navy uppercase tracking-wider">
               Andhra Pradesh & Telangana Editions

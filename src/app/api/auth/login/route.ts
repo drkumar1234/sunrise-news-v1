@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     string(input.password, 'password', 1024, true);
     const user = await authenticate(request, email, input.password);
     const response = json({ user });
-    response.cookies.set(SESSION_COOKIE, await createSession(), sessionCookieOptions());
+    response.cookies.set(SESSION_COOKIE, await createSession(Date.now(), user), sessionCookieOptions());
     return response;
   } catch (error) { return apiError(error); }
 }

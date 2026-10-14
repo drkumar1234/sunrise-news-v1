@@ -28,6 +28,7 @@ const search = require('../src/app/api/search/route.ts');
 const catalog = require('../src/app/api/catalog/route.ts');
 const epapers = require('../src/app/api/admin/epapers/route.ts');
 const publicEpapers = require('../src/app/api/epapers/route.ts');
+const employees = require('../src/app/api/admin/employees/route.ts');
 const media = require('../src/app/api/media/[key]/route.ts');
 const origin = 'https://sunrise.example';
 let dataDirectory, oldEnvironment;
@@ -39,6 +40,43 @@ const request = (method = 'GET', pathname = '/api/articles', data, cookie, suppl
   ...(data === undefined ? {} : { body: JSON.stringify(data) }),
 });
 const signedCookie = async () => `${auth.SESSION_COOKIE}=${await auth.createSession()}`;
+
+test('owner enrolls employees, editor cannot manage accounts, and removal revokes sessions', async () => {
+  const ownerCookie = await signedCookie();
+  const input = { name: 'Test Editor', email: 'EDITOR@example.test', password: ' test-editor-password ' };
+  assert.equal((await employees.GET(request('GET', '/api/admin/employees'))).status, 401);
+  assert.equal((await employees.POST(request('POST', '/api/admin/employees', input, ownerCookie, 'https://attacker.example'))).status, 403);
+  const created = await employees.POST(request('POST', '/api/admin/employees', input, ownerCookie));
+  assert.equal(created.status, 201);
+  const account = (await created.json()).employee;
+  assert.equal(account.email, 'editor@example.test');
+  assert.equal(account.role, 'editor');
+  assert.ok(!('passwordHash' in account));
+  assert.ok(!('salt' in account));
+  assert.equal((await employees.POST(request('POST', '/api/admin/employees', input, ownerCookie))).status, 409);
+  assert.equal((await employees.POST(request('POST', '/api/admin/employees', { ...input, email: 'owner@example.test' }, ownerCookie))).status, 409);
+  assert.equal((await employees.POST(request('POST', '/api/admin/employees', { ...input, password: 'short' }, ownerCookie))).status, 400);
+  assert.equal((await login.POST(request('POST', '/api/auth/login', { email: input.email, password: input.password.trim() }))).status, 401);
+  const signed = await login.POST(request('POST', '/api/auth/login', { email: input.email, password: input.password }));
+  assert.equal(signed.status, 200);
+  const cookie = signed.headers.get('set-cookie').split(';')[0];
+  assert.equal((await (await session.GET(request('GET', '/api/auth/session', undefined, cookie))).json()).user.id, account.id);
+  assert.equal((await articles.GET(request('GET', '/api/articles?status=all', undefined, cookie))).status, 200);
+  for (const [handler, method, body] of [[employees.GET, 'GET'], [employees.POST, 'POST', input], [employees.DELETE, 'DELETE', { id: account.id }]]) {
+    assert.equal((await handler(request(method, '/api/admin/employees', body, cookie))).status, 403);
+  }
+  const stored = await storage.readJSON('sunrise-auth', 'employees-v1', () => ({}));
+  assert.equal(stored.employees[0].passwordHash.length, 128);
+  assert.ok(!JSON.stringify(stored).includes(input.password));
+  assert.equal((await employees.DELETE(request('DELETE', '/api/admin/employees', { id: account.id }, ownerCookie))).status, 200);
+  assert.equal((await session.GET(request('GET', '/api/auth/session', undefined, cookie))).status, 401);
+  assert.equal((await login.POST(request('POST', '/api/auth/login', { email: input.email, password: input.password }))).status, 401);
+  const enrolledAgain = await employees.POST(request('POST', '/api/admin/employees', input, ownerCookie));
+  assert.equal(enrolledAgain.status, 201);
+  assert.notEqual((await enrolledAgain.json()).employee.id, account.id);
+  assert.equal((await session.GET(request('GET', '/api/auth/session', undefined, cookie))).status, 401);
+  assert.equal((await session.GET(request('GET', '/api/auth/session', undefined, ownerCookie))).status, 200);
+});
 
 beforeEach(async () => {
   oldEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));

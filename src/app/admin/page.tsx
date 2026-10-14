@@ -13,7 +13,8 @@ import { EpaperUploadPanel } from '@/components/epaper/EpaperUploadPanel';
 
 export const dynamic = 'force-dynamic';
 export default async function AdminDashboardPage() {
-  if (!await getSession(new Request('http://cms.local/admin', { headers: { cookie: (await cookies()).toString() } }))) redirect('/admin/login');
+  const user = await getSession(new Request('http://cms.local/admin', { headers: { cookie: (await cookies()).toString() } }));
+  if (!user) redirect('/admin/login');
   const [{ articles: all }, categories, subscribers, logs] = await Promise.all([
     getArticles({ status: 'all' }), getCategories(), getSubscribers(), getAuditLogs(),
   ]);
@@ -38,7 +39,14 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {user.role === 'super_admin' && <Link
+            href="/admin/employees"
+            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 rounded-xl text-xs font-bold flex items-center gap-1.5"
+          >
+            <Users className="w-4 h-4" />
+            <span>Manage Employees</span>
+          </Link>}
           <Link
             href="/admin/articles/editor"
             className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-dark text-white rounded-xl text-xs font-bold transition-colors shadow flex items-center gap-1.5"

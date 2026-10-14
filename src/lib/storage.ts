@@ -13,8 +13,8 @@ export class StorageConflictError extends Error {
 
 export function usesNetlifyStorage(): boolean {
   const backend = process.env.SUNRISE_STORAGE || 'local';
-  if (backend !== 'local' && backend !== 'netlify') {
-    throw new Error('SUNRISE_STORAGE must be local or netlify.');
+  if (!['local', 'netlify', 'cloudflare'].includes(backend)) {
+    throw new Error('SUNRISE_STORAGE must be local, netlify or cloudflare.');
   }
   return backend === 'netlify';
 }
@@ -163,6 +163,11 @@ async function mutateLocal<T, R>(filename: string, fallback: () => T, change: (d
 }
 
 export async function readJSON<T>(store: string, key: string, fallback: () => T): Promise<T> {
+  if (process.env.SUNRISE_STORAGE === 'cloudflare') {
+    const { cloudflareJSONStore } = await import('./cloudflare-store');
+    const found = await cloudflareJSONStore(store).getWithMetadata(key, { type: 'json', consistency: 'strong' });
+    return found ? found.data as T : structuredClone(fallback());
+  }
   if (!usesNetlifyStorage()) return readLocal(localFilename(store, key), fallback);
   const found = await (await getCMSStore(store)).getWithMetadata(key, { type: 'json', consistency: 'strong' });
   return found ? found.data as T : structuredClone(fallback());
@@ -174,6 +179,10 @@ export async function mutateJSON<T, R>(
   fallback: () => T,
   change: (data: T) => R,
 ): Promise<R> {
+  if (process.env.SUNRISE_STORAGE === 'cloudflare') {
+    const { cloudflareJSONStore } = await import('./cloudflare-store');
+    return mutateJSONWithCAS(cloudflareJSONStore(store), key, fallback, change);
+  }
   return usesNetlifyStorage()
     ? mutateJSONWithCAS(await getCMSStore(store), key, fallback, change)
     : mutateLocal(localFilename(store, key), fallback, change);

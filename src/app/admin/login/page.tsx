@@ -34,7 +34,7 @@ export default function AdminLoginPage() {
         <div className="text-center">
           <LockKeyhole className="w-7 h-7 mx-auto mb-3 text-brand-orange" />
           <h1 className="text-2xl font-black text-slate-900">Newsroom sign in</h1>
-          <p className="text-sm text-slate-500 mt-2">Use the owner account to write, publish, and manage Sunrise News.</p>
+          <p className="text-sm text-slate-500 mt-2">Sign in with your owner or enrolled employee account to manage Sunrise News.</p>
         </div>
         <form onSubmit={signIn} className="space-y-4">
           <div>

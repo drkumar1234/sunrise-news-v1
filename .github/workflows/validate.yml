@@ -1,0 +1,24 @@
+name: Validate CMS and Cloudflare bundle
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:cloudflare
+      - run: npm run typecheck
+      - run: npm run build:cloudflare
+      - run: node --test tests/cloudflare-app.cjs
+      - run: npx wrangler deploy --dry-run --outdir work/cloudflare-bundle
+        env:
+          CLOUDFLARE_ENV: production
