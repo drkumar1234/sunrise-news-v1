@@ -23,6 +23,7 @@ export function validateBackup(value: unknown): MigrationBackup {
   for (const value of input.employees) {
     const employee = object(value);
     if (typeof employee.id !== 'string' || !employee.id.startsWith('employee-') || identities.has(employee.id)
+      || (employee.designation !== undefined && !['Reporter', 'Editor', 'Sub Editor'].includes(employee.designation as string))
       || employee.role !== 'editor' || typeof employee.name !== 'string' || typeof employee.email !== 'string'
       || (employee.avatar !== undefined && (typeof employee.avatar !== 'string' || (employee.avatar !== '' && !/^\/api\/media\/[0-9a-f-]{36}\.(jpe?g|png|webp)$/.test(employee.avatar))))
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employee.email) || typeof employee.createdAt !== 'string'
