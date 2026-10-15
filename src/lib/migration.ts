@@ -24,6 +24,7 @@ export function validateBackup(value: unknown): MigrationBackup {
     const employee = object(value);
     if (typeof employee.id !== 'string' || !employee.id.startsWith('employee-') || identities.has(employee.id)
       || employee.role !== 'editor' || typeof employee.name !== 'string' || typeof employee.email !== 'string'
+      || (employee.avatar !== undefined && (typeof employee.avatar !== 'string' || (employee.avatar !== '' && !/^\/api\/media\/[0-9a-f-]{36}\.(jpe?g|png|webp)$/.test(employee.avatar))))
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employee.email) || typeof employee.createdAt !== 'string'
       || typeof employee.salt !== 'string' || !/^[0-9a-f]{64}$/.test(employee.salt)
       || typeof employee.passwordHash !== 'string' || !/^[0-9a-f]{128}$/.test(employee.passwordHash)) throw new ApiError(400, 'Invalid employee registry.');
@@ -45,7 +46,7 @@ export function validateBackup(value: unknown): MigrationBackup {
       || !Number.isSafeInteger(metadata.size) || metadata.size < 1 || metadata.size > 4 * 1024 * 1024) throw new ApiError(400, 'Invalid media manifest.');
     keys.add(entry.key);
   }
-  const referencedKeys = JSON.stringify(database).matchAll(/\/api\/media\/([0-9a-f-]{36}\.(?:pdf|docx|txt|md|jpe?g|png|webp))/g);
+  const referencedKeys = JSON.stringify({ database, employees: input.employees }).matchAll(/\/api\/media\/([0-9a-f-]{36}\.(?:pdf|docx|txt|md|jpe?g|png|webp))/g);
   for (const reference of Array.from(referencedKeys)) if (!keys.has(reference[1])) throw new ApiError(400, 'The backup manifest omits a referenced upload.');
   return input as unknown as MigrationBackup;
 }

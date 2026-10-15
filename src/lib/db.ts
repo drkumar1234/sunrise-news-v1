@@ -14,6 +14,8 @@ import { mutateJSON, readJSON } from './storage';
 import { AUTHOR_ROSTER_VERSION, installNewsroomAuthors } from './author-profiles';
 import { slugifyHeadline } from './article-slug';
 import { EPAPER_CATEGORY } from './epaper';
+import { employeeRecords } from './employees';
+import { withEmployeeAuthors } from './employee-authors';
 
 type StoredRevision = ArticleRevision & { headlineTe?: string; summaryTe?: string; bodyTe?: string };
 export interface DatabaseSchema {
@@ -373,9 +375,12 @@ export async function saveTag(tag: Tag, user: Editor): Promise<Tag> {
   });
 }
 
-export async function getAuthors(): Promise<Author[]> { return (await getDB()).authors; }
-export async function getAuthorById(id: string): Promise<Author | undefined> { return (await getDB()).authors.find(author => author.id === id); }
-export async function getAuthorBySlug(slug: string): Promise<Author | undefined> { return (await getDB()).authors.find(author => author.slug === slug); }
+export async function getAuthors(): Promise<Author[]> {
+  const [database, employees] = await Promise.all([getDB(), employeeRecords()]);
+  return withEmployeeAuthors(database.authors, employees);
+}
+export async function getAuthorById(id: string): Promise<Author | undefined> { return (await getAuthors()).find(author => author.id === id); }
+export async function getAuthorBySlug(slug: string): Promise<Author | undefined> { return (await getAuthors()).find(author => author.slug === slug); }
 export async function getSettings(): Promise<EditorialSettings> { return (await getDB()).settings; }
 export async function updateSettings(updates: Partial<EditorialSettings>, user: Editor): Promise<EditorialSettings> {
   return changeDB(db => {

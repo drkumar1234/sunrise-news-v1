@@ -29,6 +29,7 @@ const catalog = require('../src/app/api/catalog/route.ts');
 const epapers = require('../src/app/api/admin/epapers/route.ts');
 const publicEpapers = require('../src/app/api/epapers/route.ts');
 const employees = require('../src/app/api/admin/employees/route.ts');
+const employeePhoto = require('../src/app/api/admin/employee-photo/route.ts');
 const media = require('../src/app/api/media/[key]/route.ts');
 const origin = 'https://sunrise.example';
 let dataDirectory, oldEnvironment;
@@ -40,6 +41,48 @@ const request = (method = 'GET', pathname = '/api/articles', data, cookie, suppl
   ...(data === undefined ? {} : { body: JSON.stringify(data) }),
 });
 const signedCookie = async () => `${auth.SESSION_COOKIE}=${await auth.createSession()}`;
+
+test('employee authors include existing accounts, keep credentials private, and publish their uploaded portrait with articles', async () => {
+  const ownerCookie = await signedCookie();
+  const accountResponse = await employees.POST(request('POST', '/api/admin/employees', { name: 'Photo Editor', email: 'private-editor@example.test', password: 'photo-editor-test-password' }, ownerCookie));
+  assert.equal(accountResponse.status, 201);
+  const account = (await accountResponse.json()).employee;
+  const byline = (await db.getAuthors()).find(author => author.id === account.id);
+  assert.equal(byline.name, account.name);
+  assert.equal((await db.getAuthorBySlug(byline.slug)).id, account.id);
+  assert.equal((await db.getAuthors()).filter(author => author.id === account.id).length, 1);
+  const catalogData = await (await catalog.GET(request())).text();
+  assert.ok(catalogData.includes('Photo Editor'));
+  assert.ok(!catalogData.includes(account.email));
+  assert.ok(!catalogData.includes('passwordHash'));
+  const editorCookie = `${auth.SESSION_COOKIE}=${await auth.createSession(Date.now(), { id: account.id, name: account.name, role: 'editor' })}`;
+  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG3sAAAAASUVORK5CYII=', 'base64');
+  const upload = (cookie, name = 'portrait.png') => {
+    const form = new FormData(); form.set('file', new File([bytes], name));
+    return employeePhoto.POST(new Request(origin + '/api/admin/employee-photo', { method: 'POST', headers: { origin, ...(cookie ? { cookie } : {}) }, body: form }));
+  };
+  assert.equal((await upload()).status, 401);
+  assert.equal((await upload(editorCookie)).status, 403);
+  assert.equal((await upload(ownerCookie, 'portrait.pdf')).status, 400);
+  const uploaded = await upload(ownerCookie);
+  assert.equal(uploaded.status, 201);
+  const { avatar } = await uploaded.json();
+  const patch = cookie => employees.PATCH(request('PATCH', '/api/admin/employees', { id: account.id, avatar }, cookie));
+  assert.equal((await patch(editorCookie)).status, 403);
+  assert.equal((await employees.PATCH(request('PATCH', '/api/admin/employees', { id: account.id, avatar: 'https://example.test/photo.png' }, ownerCookie))).status, 400);
+  assert.equal((await patch(ownerCookie)).status, 200);
+  assert.equal((await db.getAuthorById(account.id)).avatar, avatar);
+  const mediaContext = { params: Promise.resolve({ key: avatar.split('/').at(-1) }) };
+  assert.equal((await media.GET(request('GET', avatar), mediaContext)).status, 404, 'Unused employee portraits remain private');
+  const articleId = (await db.getAllData()).articles[0].id;
+  await db.updateArticle(articleId, { authorId: account.id, status: 'published' }, { id: 'site-owner', name: 'Owner', role: 'super_admin' });
+  const publicPhoto = await media.GET(request('GET', avatar), mediaContext);
+  assert.equal(publicPhoto.status, 200);
+  assert.deepEqual(Buffer.from(await publicPhoto.arrayBuffer()), bytes);
+  await employees.DELETE(request('DELETE', '/api/admin/employees', { id: account.id }, ownerCookie));
+  assert.equal((await db.getAuthorById(account.id)).avatar, avatar, 'Access removal preserves published bylines and portraits');
+  assert.equal((await media.GET(request('GET', avatar), mediaContext)).status, 200);
+});
 
 test('owner enrolls employees, editor cannot manage accounts, and removal revokes sessions', async () => {
   const ownerCookie = await signedCookie();
