@@ -5,7 +5,12 @@ import { readJSON, mutateJSON } from './storage';
 import { ApiError } from './auth';
 
 const derive = promisify(scrypt);
-export type Employee = { id: string; name: string; email: string; avatar?: string; role: 'editor'; createdAt: string; removedAt?: string; salt: string; passwordHash: string };
+export type Designation = 'Reporter' | 'Editor' | 'Sub Editor';
+export function employeeDesignation(value: unknown): Designation {
+  if (value !== 'Reporter' && value !== 'Editor' && value !== 'Sub Editor') throw new ApiError(400, 'Choose Reporter, Editor or Sub Editor.');
+  return value;
+}
+export type Employee = { id: string; name: string; email: string; avatar?: string; designation?: Designation; role: 'editor'; createdAt: string; removedAt?: string; salt: string; passwordHash: string };
 type Registry = { employees: Employee[] };
 const empty = (): Registry => ({ employees: [] });
 export async function employeeRecords() { return (await readJSON('sunrise-auth', 'employees-v1', empty)).employees; }
@@ -28,7 +33,17 @@ export async function updateEmployeePhoto(id: string, avatar: string) {
     return publicEmployee(employee);
   });
 }
-export async function enrollEmployee(name: string, email: string, password: string, avatar = '') {
+export async function updateEmployeeDesignation(id: string, value: unknown) {
+  const designation = employeeDesignation(value);
+  return mutateJSON('sunrise-auth', 'employees-v1', empty, data => {
+    const employee = data.employees.find(item => item.id === id && !item.removedAt);
+    if (!employee) throw new ApiError(404, 'Active employee not found.');
+    employee.designation = designation;
+    return publicEmployee(employee);
+  });
+}
+export async function enrollEmployee(name: string, email: string, password: string, avatar = '', designation: Designation = 'Editor') {
+  employeeDesignation(designation);
   if (!name.trim() || name.length > 120) throw new ApiError(400, 'Enter an employee name (up to 120 characters).');
   email = email.trim().toLowerCase();
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'Enter a valid email address.');
@@ -37,7 +52,7 @@ export async function enrollEmployee(name: string, email: string, password: stri
   await validateEmployeePhoto(avatar);
   const salt = randomBytes(32).toString('hex');
   const passwordHash = (await derive(password, salt, 64) as Buffer).toString('hex');
-  const employee: Employee = { id: `employee-${randomUUID()}`, name: name.trim(), email, avatar, role: 'editor', createdAt: new Date().toISOString(), salt, passwordHash };
+  const employee: Employee = { id: `employee-${randomUUID()}`, name: name.trim(), email, avatar, designation, role: 'editor', createdAt: new Date().toISOString(), salt, passwordHash };
   return mutateJSON('sunrise-auth', 'employees-v1', empty, data => {
     if (data.employees.some(item => !item.removedAt && item.email === email)) throw new ApiError(409, 'An active employee already uses that email.');
     data.employees.push(employee);

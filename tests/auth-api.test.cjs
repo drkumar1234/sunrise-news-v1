@@ -375,3 +375,18 @@ test('input validation rejects executable URLs, unexpected identity fields, inva
   assert.equal((await newsletter.POST(request('POST', '/api/newsletter', { email: 'reader@example.test', language: 'en', editions: ['morning_briefing'] }))).status, 200);
   assert.ok((await db.getSubscribers()).some(s => s.email === 'reader@example.test'));
 });
+
+test('employee designations update public bylines without changing CMS permissions', async () => {
+  const owner = await signedCookie();
+  const enrolled = await employees.POST(request('POST', '/api/admin/employees', {name:'Designation Test',email:'designation@example.test',password:'designation-test-password',designation:'Reporter'}, owner));
+  assert.equal(enrolled.status,201);
+  const employee = (await enrolled.json()).employee;
+  assert.equal(employee.designation,'Reporter');
+  assert.equal(employee.role,'editor');
+  assert.equal((await db.getAuthorById(employee.id)).role,'Reporter');
+  const updated = await employees.PATCH(request('PATCH','/api/admin/employees',{id:employee.id,designation:'Sub Editor'},owner));
+  assert.equal(updated.status,200);
+  assert.equal((await db.getAuthorById(employee.id)).role,'Sub Editor');
+  assert.equal((await employees.PATCH(request('PATCH','/api/admin/employees',{id:employee.id,designation:'Owner'},owner))).status,400);
+  assert.equal((await employees.PATCH(request('PATCH','/api/admin/employees',{id:employee.id,designation:'Editor'}))).status,401);
+});

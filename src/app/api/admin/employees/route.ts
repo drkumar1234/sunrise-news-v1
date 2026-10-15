@@ -1,5 +1,5 @@
 import { requireOwner, json, apiError } from '@/lib/auth';
-import { employeeRecords, publicEmployee, enrollEmployee, removeEmployee, updateEmployeePhoto } from '@/lib/employees';
+import { employeeRecords, publicEmployee, enrollEmployee, removeEmployee, updateEmployeePhoto, updateEmployeeDesignation, employeeDesignation } from '@/lib/employees';
 import { readJson, onlyKeys, string } from '@/lib/validation';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
@@ -10,16 +10,20 @@ export async function POST(request: Request) {
   try {
     await requireOwner(request);
     const input = await readJson(request, 8192);
-    onlyKeys(input, ['name', 'email', 'password', 'avatar']);
+    onlyKeys(input, ['name', 'email', 'password', 'avatar', 'designation']);
     string(input.password, 'password', 1024, true);
-    return json({ employee: await enrollEmployee(string(input.name, 'name', 120, true), string(input.email, 'email', 254, true), input.password as string, string(input.avatar ?? '', 'avatar', 200)) }, 201);
+    return json({ employee: await enrollEmployee(string(input.name, 'name', 120, true), string(input.email, 'email', 254, true), input.password as string, string(input.avatar ?? '', 'avatar', 200), employeeDesignation(input.designation ?? 'Editor')) }, 201);
   } catch (error) { return apiError(error); }
 }
 export async function PATCH(request: Request) {
   try {
     await requireOwner(request);
     const input = await readJson(request, 2048);
-    onlyKeys(input, ['id', 'avatar']);
+    onlyKeys(input, ['id', 'avatar', 'designation']);
+    if (input.designation !== undefined) {
+      onlyKeys(input, ['id', 'designation']);
+      return json({ employee: await updateEmployeeDesignation(string(input.id, 'id', 100, true), input.designation) });
+    }
     return json({ employee: await updateEmployeePhoto(string(input.id, 'id', 100, true), string(input.avatar, 'avatar', 200)) });
   } catch (error) { return apiError(error); }
 }
